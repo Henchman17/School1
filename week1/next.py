@@ -7,5 +7,7 @@ def print_machine_name():
     except socket.error as err_msg:
         print("%s: %s" %(remote_host, err_msg))
 
+    print("Performed by: John Rave O. Camarines | BSIT 3D")
+
 if __name__ == '__main__':
     print_machine_name()
