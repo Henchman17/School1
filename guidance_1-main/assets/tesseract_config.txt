@@ -1,0 +1,18 @@
+# Tesseract OCR Configuration File
+# This file contains configuration options for better text recognition accuracy
+
+# Page segmentation mode: 6 = Uniform block of text
+tessedit_pageseg_mode 6
+
+# OCR engine mode: 1 = Neural nets LSTM engine
+tessedit_ocr_engine_mode 1
+
+# Character whitelist: allow alphanumeric and common punctuation
+tessedit_char_whitelist 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz .,;:!?()-_
+
+# Improve accuracy for small text
+textord_min_linesize 2.5
+
+# Enable dictionary for better word recognition
+load_system_dawg 1
+load_freq_dawg 1

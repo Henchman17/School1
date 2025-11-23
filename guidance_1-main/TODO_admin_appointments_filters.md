@@ -1,0 +1,2 @@
+- [x] Change initial value of showFilters to true
+- [x] Remove the IconButton from AppBar actions

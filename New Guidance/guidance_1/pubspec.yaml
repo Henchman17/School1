@@ -10,17 +10,32 @@ dependencies:
   flutter:
     sdk: flutter
   table_calendar: ^3.0.9
-  google_mlkit_text_recognition: ^0.11.0 # For OCR (recommended)
-  # tesseract_ocr: ^0.3.2 # Uncomment if you want to use Tesseract specifically
+  google_mlkit_text_recognition: ^0.15.0 # For OCR on mobile
+  flutter_tesseract_ocr: ^0.4.0 # For OCR on desktop
   image_picker: ^1.1.2
-  path_provider: ^2.0.11
+  path_provider: ^2.1.5
   open_file: ^3.2.1
   universal_html: ^2.0.7
+  shared_preferences: ^2.2.2
+  shelf: ^1.4.0
+  shelf_router: ^1.1.0
+  shelf_cors_headers: ^0.1.5
+  postgres: ^3.0.0
+  pdf: ^3.10.0
+  bcrypt: ^1.1.3
+  watcher: ^1.1.0
+  flutter_typeahead: ^5.0.2
+  fl_chart: ^0.66.1
+  syncfusion_flutter_pdf: ^31.1.19
+  permission_handler: ^12.0.1
+  path: ^1.9.1
+  window_manager: ^0.3.9
+  supabase_flutter: ^2.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true
@@ -29,4 +44,6 @@ flutter:
     - assets/images/download.jpg
     - assets/images/school.png
     - assets/images/logonbg.png
-    - assets/files/Request Slip.pdf
+    - assets/files/RequestSlip.pdf
+    - assets/files/Good Moral.pdf
+    - assets/tesseract_config.txt

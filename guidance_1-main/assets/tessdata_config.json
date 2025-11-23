@@ -1,0 +1,9 @@
+{
+  "args": {
+    "tessedit_pageseg_mode": "6",
+    "tessedit_ocr_engine_mode": "1",
+    "tessedit_char_whitelist": "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz .,;:!?()-_",
+    "load_system_dawg": "1",
+    "load_freq_dawg": "1"
+  }
+}

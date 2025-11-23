@@ -1,0 +1,51 @@
+name: guidance_1
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  table_calendar: ^3.0.9
+  google_mlkit_text_recognition: ^0.15.0 # For OCR on mobile
+  flutter_tesseract_ocr: ^0.4.0 # For OCR on desktop
+  image_picker: ^1.1.2
+  path_provider: ^2.1.5
+  open_file: ^3.2.1
+  universal_html: ^2.0.7
+  shared_preferences: ^2.2.2
+  postgres: ^3.0.0 # For PostgreSQL database interaction
+  shelf: ^1.4.2
+  shelf_cors_headers: ^0.1.5
+  shelf_router: ^1.1.4
+  args: ^2.4.0
+  http: ^1.1.0
+  flutter_typeahead: ^5.0.2
+  fl_chart: ^0.66.1
+  syncfusion_flutter_pdf: ^31.1.19
+  permission_handler: ^12.0.1
+  pdf: ^3.11.3
+  path: ^1.9.1
+  bcrypt: ^1.1.3
+  window_manager: ^0.3.9
+  file_picker: ^6.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/s_logo.jpg
+    - assets/images/download.jpg
+    - assets/images/school.png
+    - assets/images/logonbg.png
+    - assets/files/RequestSlip.pdf
+    - assets/files/RequestSlip.docx
+    - assets/files/Good Moral.pdf
+    - assets/tesseract_config.txt
