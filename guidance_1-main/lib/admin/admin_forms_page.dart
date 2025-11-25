@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:provider/provider.dart';
+import '../providers/form_settings_provider.dart';
+import 'package:provider/provider.dart';
+import '../providers/form_settings_provider.dart';
+import 'package:provider/provider.dart';
+import '../providers/form_settings_provider.dart';
 
 class AdminFormsPage extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -15,13 +21,6 @@ class _AdminFormsPageState extends State<AdminFormsPage> {
   List<Map<String, dynamic>> _forms = [];
   bool _isLoading = true;
   String _errorMessage = '';
-  Map<String, bool> _formSettings = {
-    'scrf_enabled': true,
-    'routine_interview_enabled': true,
-    'good_moral_request_enabled': true,
-    'guidance_scheduling_enabled': true,
-  };
-  bool _isLoadingSettings = false;
 
   static const String apiBaseUrl = 'http://localhost:8080';
 
@@ -29,7 +28,9 @@ class _AdminFormsPageState extends State<AdminFormsPage> {
   void initState() {
     super.initState();
     _fetchForms();
-    _fetchFormSettings();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<FormSettingsProvider>(context, listen: false).fetchFormSettings();
+    });
   }
 
   Future<void> _fetchForms() async {
@@ -48,7 +49,7 @@ class _AdminFormsPageState extends State<AdminFormsPage> {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         setState(() {
-          _forms = List<Map<String, dynamic>>.from(data['forms']).where((form) => form['form_type'] != 'good_moral_request').toList();
+          _forms = List<Map<String, dynamic>>.from(data['forms']).where((form) => form['form_type'] == 'scrf' || form['form_type'] == 'routine_interview').toList();
           _isLoading = false;
         });
       } else {
@@ -65,41 +66,7 @@ class _AdminFormsPageState extends State<AdminFormsPage> {
     }
   }
 
-  Future<void> _fetchFormSettings() async {
-    setState(() {
-      _isLoadingSettings = true;
-    });
 
-    try {
-      final adminId = widget.userData?['id'] ?? 0;
-      final response = await http.get(
-        Uri.parse('$apiBaseUrl/api/admin/form-settings?admin_id=$adminId'),
-        headers: {'Content-Type': 'application/json'},
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final settings = data['settings'] as Map<String, dynamic>;
-        setState(() {
-          _formSettings = {
-            'scrf_enabled': settings['scrf_enabled'] ?? true,
-            'routine_interview_enabled': settings['routine_interview_enabled'] ?? true,
-          };
-          _isLoadingSettings = false;
-        });
-      } else {
-        // Keep default settings if fetch fails
-        setState(() {
-          _isLoadingSettings = false;
-        });
-      }
-    } catch (e) {
-      // Keep default settings if error occurs
-      setState(() {
-        _isLoadingSettings = false;
-      });
-    }
-  }
 
   void _showFormDetails(Map<String, dynamic> formData) {
     showDialog(
@@ -259,7 +226,7 @@ class _AdminFormsPageState extends State<AdminFormsPage> {
             icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: () {
               _fetchForms();
-              _fetchFormSettings();
+              Provider.of<FormSettingsProvider>(context, listen: false).fetchFormSettings();
             },
             tooltip: 'Refresh',
           ),
@@ -279,16 +246,23 @@ class _AdminFormsPageState extends State<AdminFormsPage> {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 8),
-                _isLoadingSettings
-                    ? const CircularProgressIndicator()
-                    : Wrap(
-                        spacing: 16,
-                        runSpacing: 8,
-                        children: [
-                          _buildSettingToggle('SCRF Enabled', 'scrf_enabled'),
-                          _buildSettingToggle('Routine Interview Enabled', 'routine_interview_enabled'),
-                        ],
-                      ),
+                Consumer<FormSettingsProvider>(
+                  builder: (context, formSettingsProvider, child) {
+                    return formSettingsProvider.isLoading
+                        ? const CircularProgressIndicator()
+                        : Wrap(
+                            spacing: 16,
+                            runSpacing: 8,
+                            children: [
+                              _buildSettingToggle('SCRF Enabled', 'scrf_enabled'),
+                              _buildSettingToggle('Routine Interview Enabled', 'routine_interview_enabled'),
+                              _buildSettingToggle('Good Moral Request Enabled', 'good_moral_request_enabled'),
+                              _buildSettingToggle('Guidance Scheduling Enabled', 'guidance_scheduling_enabled'),
+                              _buildSettingToggle('DASS-21 Enabled', 'dass21_enabled'),
+                            ],
+                          );
+                  },
+                ),
               ],
             ),
           ),
@@ -392,44 +366,28 @@ class _AdminFormsPageState extends State<AdminFormsPage> {
   }
 
   Widget _buildSettingToggle(String label, String settingKey) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label),
-        const SizedBox(width: 8),
-        Switch(
-          value: _formSettings[settingKey] ?? true,
-          onChanged: (value) {
-            setState(() {
-              _formSettings[settingKey] = value;
-            });
-            _updateFormSettings();
-          },
-        ),
-      ],
+    return Consumer<FormSettingsProvider>(
+      builder: (context, formSettingsProvider, child) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label),
+            const SizedBox(width: 8),
+            Switch(
+              value: formSettingsProvider.formSettings[settingKey] ?? true,
+              onChanged: (value) {
+                final updatedSettings = Map<String, bool>.from(formSettingsProvider.formSettings);
+                updatedSettings[settingKey] = value;
+                formSettingsProvider.updateFormSettings(updatedSettings);
+              },
+            ),
+          ],
+        );
+      },
     );
   }
 
-  Future<void> _updateFormSettings() async {
-    try {
-      final adminId = widget.userData?['id'] ?? 0;
-      final response = await http.put(
-        Uri.parse('$apiBaseUrl/api/admin/form-settings?admin_id=$adminId'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'settings': _formSettings}),
-      );
 
-      if (response.statusCode != 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Failed to update settings')),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error updating settings: $e')),
-      );
-    }
-  }
 
   Future<void> _toggleFormActiveStatus(Map<String, dynamic> formData, bool isActive) async {
     final formType = formData['form_type'];

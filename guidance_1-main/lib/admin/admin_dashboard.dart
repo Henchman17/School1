@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 import '../login_page.dart';
+import '../providers/auth_provider.dart';
 import 'admin_users_page.dart';
 import 'admin_appointments_page.dart';
 import 'admin_analytics_page.dart';
@@ -38,10 +40,14 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   @override
   void initState() {
     super.initState();
-    _currentUser = widget.userData;
-    fetchDashboardData();
-    fetchCredentialChangeRequests();
-    fetchRecentActivities();
+    // Get user data from AuthProvider if not passed directly
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      _currentUser = authProvider.userData ?? widget.userData;
+      fetchDashboardData();
+      fetchCredentialChangeRequests();
+      fetchRecentActivities();
+    });
   }
 
   void _handleLogout() {

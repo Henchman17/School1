@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../login_page.dart';
 import 'head_good_moral_page.dart';
+import '../config.dart';
 
 class HeadDashboardPage extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -100,9 +102,15 @@ class _HeadDashboardPageState extends State<HeadDashboardPage> {
 
     try {
       final userId = widget.userData?['id'] ?? 0;
+      final baseUrl = await AppConfig.apiBaseUrl;
       final response = await http.get(
-        Uri.parse('$apiBaseUrl/api/head/dashboard?head_id=$userId'),
+        Uri.parse('$baseUrl/api/head/dashboard?head_id=$userId'),
         headers: {'Content-Type': 'application/json'},
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw TimeoutException('Server is not responding. Please check your internet connection and try again.');
+        },
       );
 
       if (response.statusCode == 200) {
@@ -131,9 +139,15 @@ class _HeadDashboardPageState extends State<HeadDashboardPage> {
 
     try {
       final headId = widget.userData?['id'] ?? 0;
+      final baseUrl = await AppConfig.apiBaseUrl;
       final response = await http.get(
-        Uri.parse('$apiBaseUrl/api/head/good-moral-requests?head_id=$headId'),
+        Uri.parse('$baseUrl/api/head/good-moral-requests?head_id=$headId'),
         headers: {'Content-Type': 'application/json'},
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw TimeoutException('Server is not responding. Please check your internet connection and try again.');
+        },
       );
 
       if (response.statusCode == 200) {
@@ -157,20 +171,24 @@ class _HeadDashboardPageState extends State<HeadDashboardPage> {
   Future<void> approveRequest(int requestId) async {
     try {
       final headId = widget.userData?['id'] ?? 0;
+      final baseUrl = await AppConfig.apiBaseUrl;
       final response = await http.put(
-        Uri.parse('$apiBaseUrl/api/head/good-moral-requests/$requestId/approve?head_id=$headId'),
+        Uri.parse('$baseUrl/api/head/good-moral-requests/$requestId/approve?head_id=$headId'),
         headers: {'Content-Type': 'application/json'},
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw TimeoutException('Server is not responding. Please check your internet connection and try again.');
+        },
       );
       final body = response.body.isNotEmpty ? jsonDecode(response.body) : {};
 
       if (response.statusCode == 200) {
         fetchGoodMoralRequests();
-        final certificatePath = body is Map && body['certificate_path'] != null ? body['certificate_path'] : null;
+        final message = (body is Map && body['message'] != null) ? body['message'] : 'Request approved successfully';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(certificatePath != null
-                ? 'Request approved. Certificate: $certificatePath'
-                : 'Request approved successfully'),
+            content: Text(message),
             backgroundColor: Colors.green,
           ),
         );
@@ -196,9 +214,15 @@ class _HeadDashboardPageState extends State<HeadDashboardPage> {
   Future<void> rejectRequest(int requestId) async {
     try {
       final headId = widget.userData?['id'] ?? 0;
+      final baseUrl = await AppConfig.apiBaseUrl;
       final response = await http.put(
-        Uri.parse('$apiBaseUrl/api/head/good-moral-requests/$requestId/reject?head_id=$headId'),
+        Uri.parse('$baseUrl/api/head/good-moral-requests/$requestId/reject?head_id=$headId'),
         headers: {'Content-Type': 'application/json'},
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw TimeoutException('Server is not responding. Please check your internet connection and try again.');
+        },
       );
       final body = response.body.isNotEmpty ? jsonDecode(response.body) : {};
 
@@ -493,12 +517,14 @@ class _HeadDashboardPageState extends State<HeadDashboardPage> {
                     children: filteredRequests.map((request) {
                       final requestId = request['id'];
                       final studentName = request['student_name'] ?? 'Unknown';
-                      final studentNumber = request['student_number'] ?? 'N/A';
                       final course = request['course'] ?? 'N/A';
-                      final yearLevel = request['year_level'] ?? 'N/A';
                       final purpose = request['purpose'] ?? 'N/A';
-                      final status = request['status'] ?? 'pending';
+                      final status = request['approval_status'] ?? 'pending';
+                      final currentStep = request['current_approval_step'] ?? 1;
+                      final approvalsReceived = request['approvals_received'] ?? 0;
                       final createdAt = request['created_at'] ?? '';
+                      final headRoleName = request['head_role_name'] ?? 'Unknown';
+                      final headRoleDescription = request['head_role_description'] ?? '';
 
                       // Status color
                       Color statusColor;
@@ -576,28 +602,6 @@ class _HeadDashboardPageState extends State<HeadDashboardPage> {
                                     const SizedBox(width: 8),
                                     Text(
                                       'Student: $studentName',
-                                      style: const TextStyle(fontSize: 14),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.badge, size: 16, color: Colors.grey),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Student Number: $studentNumber',
-                                      style: const TextStyle(fontSize: 14),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.school, size: 16, color: Colors.grey),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Course: $course, Year: $yearLevel',
                                       style: const TextStyle(fontSize: 14),
                                     ),
                                   ],
@@ -707,10 +711,14 @@ class _HeadDashboardPageState extends State<HeadDashboardPage> {
       );
     }
 
-    // Mock data for demonstration
-    final totalRequests = goodMoralRequests.length;
-    final pendingRequests = goodMoralRequests.where((r) => r['status'] == 'pending').length;
-    final approvedRequests = goodMoralRequests.where((r) => r['status'] == 'approved').length;
+    // Use real data from API
+    final totalRequests = dashboardData?['total_requests']?.toString() ?? '0';
+    final pendingRequests = dashboardData?['pending_for_head']?.toString() ?? '0';
+    final approvedRequests = dashboardData?['approved_requests']?.toString() ?? '0';
+    final rejectedRequests = dashboardData?['rejected_requests']?.toString() ?? '0';
+    final headRole = dashboardData?['head_role'] as Map<String, dynamic>?;
+    final roleName = headRole?['name']?.toString() ?? 'Unknown';
+    final roleDescription = headRole?['description']?.toString() ?? '';
 
     return Column(
       children: [

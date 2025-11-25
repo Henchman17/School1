@@ -3,12 +3,15 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:provider/provider.dart';
 import 'navigation_rail_example.dart';
 import 'student/student_panel.dart';
 import 'admin/admin_dashboard.dart';
 import 'counselor/counselor_dashboard.dart';
 import 'head/head_dashboard.dart';
 import 'config.dart';  // Add this import
+import 'providers/auth_provider.dart';
+import 'providers/app_state_provider.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -78,10 +81,9 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _handleAuth() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = '';
-    });
+    final appState = Provider.of<AppStateProvider>(context, listen: false);
+    appState.setLoading(true);
+    appState.clearError();
 
     try {
       if (_isLogin) {
@@ -90,13 +92,9 @@ class _LoginPageState extends State<LoginPage> {
         await _register();
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Authentication failed: ${e.toString()}';
-      });
+      appState.setError('Authentication failed: ${e.toString()}');
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      appState.setLoading(false);
     }
   }
 
@@ -181,6 +179,10 @@ class _LoginPageState extends State<LoginPage> {
     await prefs.setString('user_role', userData['role']);
     await prefs.setString('user_email', userData['email'] ?? '');
     await prefs.setString('user_name', '${userData['first_name'] ?? ''} ${userData['last_name'] ?? ''}'.trim());
+
+    // Update AuthProvider
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    authProvider.login(userData);
 
     if (userData['role'] == 'admin') {
       Navigator.pushReplacement(

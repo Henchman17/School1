@@ -27,7 +27,7 @@ class _GuidanceSchedulingPageState extends State<GuidanceSchedulingPage> {
   String studentName = '';
   String reason = '';
   String course = '';
-  TimeOfDay? time;
+  String? selectedTimeSlot;
   DateTime? date;
   bool _isSubmitting = false;
   String _errorMessage = '';
@@ -156,7 +156,7 @@ class _GuidanceSchedulingPageState extends State<GuidanceSchedulingPage> {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
 
-      print('Form validated. StudentName: $studentName, Course: $course, Reason: $reason, Date: $date, Time: $time');
+      print('Form validated. StudentName: $studentName, Course: $course, Reason: $reason, Date: $date, Time Slot: $selectedTimeSlot');
       print('UserData: ${widget.userData}');
 
       setState(() {
@@ -165,9 +165,11 @@ class _GuidanceSchedulingPageState extends State<GuidanceSchedulingPage> {
       });
 
       try {
-        final appointmentDate = DateTime(date!.year, date!.month, date!.day, time!.hour, time!.minute);
+        final timeOfDay = _getTimeOfDayFromSlot(selectedTimeSlot!);
+        final appointmentDate = DateTime(date!.year, date!.month, date!.day, timeOfDay.hour, timeOfDay.minute);
 
         print('Appointment Date: $appointmentDate');
+        print('Selected Time Slot: $selectedTimeSlot');
 
         final requestBody = {
           'user_id': widget.userData?['id'],
@@ -221,13 +223,61 @@ class _GuidanceSchedulingPageState extends State<GuidanceSchedulingPage> {
     }
   }
 
-  Future<void> _selectTime(BuildContext context) async {
-    final TimeOfDay? picked =
-        await showTimePicker(context: context, initialTime: TimeOfDay.now());
-    if (picked != null && picked != time) {
-      setState(() {
-        time = picked;
-      });
+  final List<String> availableTimeSlots = [
+    '8:00 AM - 9:00 AM',
+    '9:00 AM - 10:00 AM',
+    '10:00 AM - 11:00 AM',
+    '11:00 AM - 12:00 PM',
+    '1:00 PM - 2:00 PM',
+    '2:00 PM - 3:00 PM',
+    '3:00 PM - 4:00 PM',
+    '4:00 PM - 5:00 PM',
+  ];
+
+  TimeOfDay _getTimeOfDayFromSlot(String slot) {
+    switch (slot) {
+      case '8:00 AM - 9:00 AM':
+        return const TimeOfDay(hour: 8, minute: 0);
+      case '9:00 AM - 10:00 AM':
+        return const TimeOfDay(hour: 9, minute: 0);
+      case '10:00 AM - 11:00 AM':
+        return const TimeOfDay(hour: 10, minute: 0);
+      case '11:00 AM - 12:00 PM':
+        return const TimeOfDay(hour: 11, minute: 0);
+      case '1:00 PM - 2:00 PM':
+        return const TimeOfDay(hour: 13, minute: 0);
+      case '2:00 PM - 3:00 PM':
+        return const TimeOfDay(hour: 14, minute: 0);
+      case '3:00 PM - 4:00 PM':
+        return const TimeOfDay(hour: 15, minute: 0);
+      case '4:00 PM - 5:00 PM':
+        return const TimeOfDay(hour: 16, minute: 0);
+      default:
+        return const TimeOfDay(hour: 9, minute: 0);
+    }
+  }
+
+  String _getTimeSlotFromDateTime(DateTime dateTime) {
+    final hour = dateTime.hour;
+    switch (hour) {
+      case 8:
+        return '8:00 AM - 9:00 AM';
+      case 9:
+        return '9:00 AM - 10:00 AM';
+      case 10:
+        return '10:00 AM - 11:00 AM';
+      case 11:
+        return '11:00 AM - 12:00 PM';
+      case 13:
+        return '1:00 PM - 2:00 PM';
+      case 14:
+        return '2:00 PM - 3:00 PM';
+      case 15:
+        return '3:00 PM - 4:00 PM';
+      case 16:
+        return '4:00 PM - 5:00 PM';
+      default:
+        return '9:00 AM - 10:00 AM';
     }
   }
 
@@ -237,6 +287,10 @@ class _GuidanceSchedulingPageState extends State<GuidanceSchedulingPage> {
       initialDate: date ?? DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime(2100),
+      selectableDayPredicate: (DateTime day) {
+        // Only allow Monday to Friday (1 = Monday, 5 = Friday)
+        return day.weekday >= 1 && day.weekday <= 5;
+      },
     );
     if (picked != null && picked != date) {
       setState(() {
@@ -251,7 +305,7 @@ class _GuidanceSchedulingPageState extends State<GuidanceSchedulingPage> {
     final TextEditingController notesController = TextEditingController(text: appointment['notes'] ?? '');
 
     DateTime selectedDate = DateTime.parse(appointment['appointment_date']);
-    TimeOfDay selectedTime = TimeOfDay.fromDateTime(selectedDate);
+    String selectedTimeSlot = _getTimeSlotFromDateTime(selectedDate);
 
     String selectedReasonType = '';
     String customReason = '';
@@ -329,36 +383,37 @@ class _GuidanceSchedulingPageState extends State<GuidanceSchedulingPage> {
                       children: [
                         SizedBox(
                           width: 150,
-                          child: InkWell(
-                            onTap: () async {
-                              final TimeOfDay? picked = await showTimePicker(
-                                context: context,
-                                initialTime: selectedTime,
-                              );
-                              if (picked != null) {
-                                setState(() {
-                                  selectedTime = picked;
-                                });
-                              }
-                            },
-                            child: InputDecorator(
-                              decoration: const InputDecoration(
-                                labelText: 'Time',
-                                border: OutlineInputBorder(),
-                              ),
-                              child: Text(selectedTime.format(context)),
+                          child: DropdownButtonFormField<String>(
+                            decoration: const InputDecoration(
+                              labelText: 'Time Slot',
+                              border: OutlineInputBorder(),
                             ),
+                            value: selectedTimeSlot,
+                            items: availableTimeSlots.map((slot) {
+                              return DropdownMenuItem<String>(
+                                value: slot,
+                                child: Text(slot),
+                              );
+                            }).toList(),
+                            onChanged: (value) {
+                              setState(() {
+                                selectedTimeSlot = value ?? selectedTimeSlot;
+                              });
+                            },
                           ),
                         ),
                         SizedBox(
                           width: 150,
-                            child: InkWell(
+                          child: InkWell(
                             onTap: () async {
                               final DateTime? picked = await showDatePicker(
                                 context: context,
                                 initialDate: selectedDate,
                                 firstDate: DateTime.now(),
                                 lastDate: DateTime(2100),
+                                selectableDayPredicate: (DateTime day) {
+                                  return day.weekday >= 1 && day.weekday <= 5;
+                                },
                               );
                               if (picked != null) {
                                 setState(() {
@@ -391,13 +446,16 @@ class _GuidanceSchedulingPageState extends State<GuidanceSchedulingPage> {
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: () => _updateAppointment(
-                    appointment['id'],
-                    purposeController.text,
-                    courseController.text,
-                    DateTime(selectedDate.year, selectedDate.month, selectedDate.day, selectedTime.hour, selectedTime.minute),
-                    notesController.text,
-                  ),
+                  onPressed: () {
+                    final timeOfDay = _getTimeOfDayFromSlot(selectedTimeSlot);
+                    _updateAppointment(
+                      appointment['id'],
+                      purposeController.text,
+                      courseController.text,
+                      DateTime(selectedDate.year, selectedDate.month, selectedDate.day, timeOfDay.hour, timeOfDay.minute),
+                      notesController.text,
+                    );
+                  },
                   child: const Text('Update'),
                 ),
               ],
@@ -843,35 +901,44 @@ class _GuidanceSchedulingPageState extends State<GuidanceSchedulingPage> {
                   runSpacing: 16,
                   children: [
                     SizedBox(
-                      width: 160,
-                      child: InkWell(
-                        onTap: () => _selectTime(context),
-                        child: InputDecorator(
-                          decoration: InputDecoration(
-                            labelText: 'Time',
-                            labelStyle: TextStyle(color: Colors.blue.shade700),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide(color: Colors.blue.shade300),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide(color: Colors.blue.shade300),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(16),
-                              borderSide: BorderSide(color: Colors.blue.shade600, width: 2),
-                            ),
-                            filled: true,
-                            fillColor: Colors.white,
-                            prefixIcon: Icon(Icons.access_time, color: Colors.blue.shade600),
+                      //width: 500,
+                      child: DropdownButtonFormField<String>(
+                        decoration: InputDecoration(
+                          labelText: 'Time Slot',
+                          labelStyle: TextStyle(color: Colors.blue.shade700),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(color: Colors.blue.shade300),
                           ),
-                          child: Text(time != null ? time!.format(context) : 'Select Time'),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(color: Colors.blue.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            borderSide: BorderSide(color: Colors.blue.shade600, width: 2),
+                          ),
+                          filled: true,
+                          fillColor: Colors.white,
+                          prefixIcon: Icon(Icons.access_time, color: Colors.blue.shade600),
                         ),
+                        value: selectedTimeSlot,
+                        items: availableTimeSlots.map((slot) {
+                          return DropdownMenuItem<String>(
+                            value: slot,
+                            child: Text(slot),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            selectedTimeSlot = value;
+                          });
+                        },
+                        validator: (value) => value == null || value.isEmpty ? 'Select a time slot' : null,
                       ),
                     ),
                     SizedBox(
-                      width: 160,
+                      //width: 160,
                       child: InkWell(
                         onTap: () => _selectDate(context),
                         child: InputDecorator(
@@ -928,8 +995,8 @@ class _GuidanceSchedulingPageState extends State<GuidanceSchedulingPage> {
                       child: Text('Psychological Examination'),
                     ),
                     DropdownMenuItem<String>(
-                      value: 'Discipline Case',
-                      child: Text('Discipline Case'),
+                      value: 'Counseling',
+                      child: Text('Counseling'),
                     ),
                     DropdownMenuItem<String>(
                       value: 'Other',

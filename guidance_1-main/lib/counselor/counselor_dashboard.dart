@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:guidance_1/providers/auth_provider.dart';
 import 'package:http/http.dart' as http;
 import '../login_page.dart';
 import 'counselor_students_page.dart';
@@ -29,8 +31,12 @@ class _CounselorDashboardPageState extends State<CounselorDashboardPage> with Si
   @override
   void initState() {
     super.initState();
-    _currentUser = widget.userData;
-    fetchDashboardData();
+    // Get user data from AuthProvider if not passed directly
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      _currentUser = authProvider.userData ?? widget.userData;
+      fetchDashboardData();
+    });
   }
 
   Future<void> fetchDashboardData() async {
@@ -78,6 +84,10 @@ class _CounselorDashboardPageState extends State<CounselorDashboardPage> with Si
           ),
           ElevatedButton(
             onPressed: () {
+              // Clear AuthProvider
+              final authProvider = Provider.of<AuthProvider>(context, listen: false);
+              authProvider.logout();
+
               Navigator.of(context).pop();
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(

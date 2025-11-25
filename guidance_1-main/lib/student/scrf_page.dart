@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:guidance_1/config.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
@@ -28,15 +29,18 @@ class _ScrfPageState extends State<ScrfPage> {
 
   Future<void> _fetchPrograms() async {
     try {
-      final response = await http.get(Uri.parse('http://10.0.2.2:8080/api/courses'));
+      final baseUrl = await AppConfig.apiBaseUrl;
+      final response = await http.get(Uri.parse('$baseUrl/api/courses'));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         setState(() {
           _programs = List<Map<String, dynamic>>.from(data['courses'] ?? []);
         });
+      } else {
+        print('Failed to load programs: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
-      // Handle error or ignore
+      print('Error fetching programs: $e');
     }
   }
 
@@ -289,9 +293,10 @@ class _ScrfPageState extends State<ScrfPage> {
     };
 
     try {
+      final baseUrl = await AppConfig.apiBaseUrl;
       final url = _existingData != null
-          ? 'http://10.0.2.2:8080/api/scrf/$userId'
-          : 'http://10.0.2.2:8080/api/scrf';
+          ? '$baseUrl/api/scrf/$userId'
+          : '$baseUrl/api/scrf';
       final method = _existingData != null ? http.put : http.post;
 
       final response = await method(

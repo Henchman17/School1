@@ -1,7 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:docx_template/docx_template.dart';
 import 'package:shelf/shelf.dart';
+import 'package:shelf_router/shelf_router.dart';
 import '../connection.dart';
-import '../lib/document_generator.dart';
+import '../docx_template.dart';
+//import '../lib/document_generator.dart';
 
 class CounselorRoutes {
   final DatabaseConnection _database;
@@ -600,7 +604,7 @@ class CounselorRoutes {
         'username': row[1],
         'email': row[2],
         'role': row[3],
-        'created_at': row[4]is DateTime ? (row[4] as DateTime).toIso8601String() : row[4]?.toString(),
+        'created_at': row[4] is DateTime ? (row[4] as DateTime).toIso8601String() : row[4]?.toString(),
         'student_id': row[5],
         'first_name': row[6],
         'last_name': row[7],
@@ -677,7 +681,7 @@ class CounselorRoutes {
             'zipcode': row[11],
             'age': row[12],
             'civil_status': row[13],
-            'date_of_birth': row[14]is DateTime ? (row[14] as DateTime).toIso8601String() : row[14]?.toString(),
+            'date_of_birth': row[14] is DateTime ? (row[14] as DateTime).toIso8601String() : row[14]?.toString(),
             'place_of_birth': row[15],
             'lrn': row[16],
             'cellphone': row[17],
@@ -700,12 +704,12 @@ class CounselorRoutes {
             'allergies_food': row[34],
             'allergies_medicine': row[35],
             'exam_taken': row[36],
-            'exam_date': row[37]is DateTime ? (row[37] as DateTime).toIso8601String() : row[37]?.toString(),
+            'exam_date': row[37] is DateTime ? (row[37] as DateTime).toIso8601String() : row[37]?.toString(),
             'raw_score': row[38],
             'percentile': row[39],
             'adjectival_rating': row[40],
-            'created_at': row[41]is DateTime ? (row[41] as DateTime).toIso8601String() : row[41]?.toString(),
-            'updated_at': row[42]is DateTime ? (row[42] as DateTime).toIso8601String() : row[42]?.toString(),
+            'created_at': row[41] is DateTime ? (row[41] as DateTime).toIso8601String() : row[41]?.toString(),
+            'updated_at': row[42] is DateTime ? (row[42] as DateTime).toIso8601String() : row[42]?.toString(),
           };
         }
       } catch (e) {
@@ -1009,7 +1013,7 @@ class CounselorRoutes {
         FROM appointments a
         JOIN users s ON a.student_id = s.id
         WHERE a.counselor_id = @counselor_id
-        ORDER BY a.created_at DESC
+        ORDER BY a.created_at ASC
       ''', {'counselor_id': int.parse(userId)});
 
       final schedules = result.map((row) => {
@@ -1196,167 +1200,468 @@ class CounselorRoutes {
     }
   }
 
-  // ================= GOOD MORAL REQUEST ENDPOINTS =================
 
-  Future<Response> getGoodMoralRequests(Request request) async {
-    try {
-      final counselorId = int.parse(request.url.queryParameters['counselor_id'] ?? '0');
-      if (!await _checkUserRole(counselorId, 'counselor')) {
-        return Response.forbidden(jsonEncode({'error': 'Counselor access required'}));
+// ================= GOOD MORAL CERTIFICATE GENERATION =================
+
+Future<String> generateGoodMoralDocx(Map<String, dynamic> data) async {
+  final file = File('templates/GoodMoral.docx');
+  final bytes = await file.readAsBytes();
+  final docx = await DocxTemplate.fromBytes(bytes);
+
+  final content = Content();
+
+  content
+    ..add(TextContent("name", data["name"]))
+    ..add(TextContent("course", data["course"]))
+    ..add(TextContent("school_year", data["school_year"]))
+    ..add(TextContent("day", data["day"]))
+    ..add(TextContent("month_year", data["month_year"]))
+    ..add(TextContent("purpose", data["purpose"]))
+    ..add(TextContent("gor", data["gor"]))
+    ..add(TextContent("date_of_payment", data["date_of_payment"]));
+
+  final generated = await docx.generate(content);
+
+  final outputFolder = Directory('generated');
+  if (!outputFolder.existsSync()) outputFolder.createSync();
+
+  final outputPath =
+      "generated/good_moral_${DateTime.now().millisecondsSinceEpoch}.docx";
+
+  final outFile = File(outputPath);
+  await outFile.writeAsBytes(generated!);
+
+  return outputPath;
+}
+
+// ================= GOOD MORAL REQUEST ENDPOINTS =================
+
+Future<Response> getGoodMoralRequests(Request request) async {
+  try {
+    final adminId = int.parse(request.url.queryParameters['admin_id'] ?? '0');
+    if (!await _checkUserRole(adminId, 'admin')) {
+      return Response.forbidden(jsonEncode({'error': 'Admin access required'}));
+    }
+
+    print('Request received: ${request.method} ${request.requestedUri.path}');
+
+    // Pagination parameters
+    final page = int.tryParse(request.url.queryParameters['page'] ?? '1') ?? 1;
+    final limit = int.tryParse(request.url.queryParameters['limit'] ?? '10') ?? 10;
+    final offset = (page - 1) * limit;
+
+    // Get total count
+    final totalResult = await _database.query('SELECT COUNT(*) FROM good_moral_requests');
+    final total = totalResult.isNotEmpty ? totalResult.first[0] : 0;
+
+    // Get paginated results
+    final result = await _database.query('''
+      SELECT
+        gmr.id,
+        gmr.student_id,
+        gmr.student_name,
+        gmr.course,
+        gmr.school_year,
+        gmr.purpose,
+        gmr.address,
+        gmr.edst,
+        gmr.gor,
+        gmr.ocr_data,
+        gmr.approval_status,
+        gmr.current_approval_step,
+        gmr.total_approvals_needed,
+        gmr.approvals_received,
+        gmr.certificate_path,
+        gmr.certificate_generated_at,
+        gmr.admin_approved,
+        gmr.admin_approved_at,
+        gmr.admin_approved_by,
+        gmr.rejection_reason,
+        gmr.rejected_at,
+        gmr.rejected_by,
+        gmr.created_at,
+        gmr.updated_at,
+        gmr.created_by,
+        gmr.updated_by,
+        u.first_name,
+        u.last_name,
+        u.email,
+        u.student_id as user_student_id,
+        admin_user.username as admin_approved_by_name,
+        rejected_user.username as rejected_by_name
+      FROM good_moral_requests gmr
+      JOIN users u ON gmr.student_id = u.id
+      LEFT JOIN users admin_user ON gmr.admin_approved_by = admin_user.id
+      LEFT JOIN users rejected_user ON gmr.rejected_by = rejected_user.id
+      ORDER BY gmr.created_at DESC
+      LIMIT @limit OFFSET @offset
+    ''', {'limit': limit, 'offset': offset});
+
+    final requests = result.map((row) => {
+      'id': row[0],
+      'student_id': row[1],
+      'student_name': row[2],
+      'course': row[3],
+      'school_year': row[4],
+      'purpose': row[5],
+      'address': row[6],
+      'edst': row[7],
+      'gor': row[8],
+      'ocr_data': row[9],
+      'approval_status': row[10],
+      'current_approval_step': row[11],
+      'total_approvals_needed': row[12],
+      'approvals_received': row[13],
+      'certificate_path': row[14],
+      'certificate_generated_at': row[15] is DateTime ? (row[15] as DateTime).toIso8601String() : row[15]?.toString(),
+      'admin_approved': row[16],
+      'admin_approved_at': row[17] is DateTime ? (row[17] as DateTime).toIso8601String() : row[17]?.toString(),
+      'admin_approved_by': row[18],
+      'rejection_reason': row[19],
+      'rejected_at': row[20] is DateTime ? (row[20] as DateTime).toIso8601String() : row[20]?.toString(),
+      'rejected_by': row[21],
+      'created_at': row[22] is DateTime ? (row[22] as DateTime).toIso8601String() : row[22]?.toString(),
+      'updated_at': row[23] is DateTime ? (row[23] as DateTime).toIso8601String() : row[23]?.toString(),
+      'created_by': row[24],
+      'updated_by': row[25],
+      'first_name': row[26],
+      'last_name': row[27],
+      'email': row[28],
+      'user_student_id': row[29],
+      'admin_approved_by_name': row[30],
+      'rejected_by_name': row[31],
+    }).toList();
+
+   final totalInt = int.tryParse(total.toString()) ?? 0;
+    return Response.ok(jsonEncode({
+      'success': true,
+      'total': totalInt,
+      'page': page,
+      'limit': limit,
+      'requests': requests
+    }));
+  } catch (e) {
+    print('Error in getGoodMoralRequests: $e');
+    return Response.internalServerError(
+      body: jsonEncode({'error': 'Failed to fetch good moral requests: $e'}),
+    );
+  }
+}
+
+
+Future<Response> approveGoodMoralRequest(Request request, String id) async {
+  try {
+    final adminId = int.parse(request.url.queryParameters['admin_id'] ?? '0');
+    if (!await _checkUserRole(adminId, 'admin')) {
+      return Response.forbidden(jsonEncode({'error': 'Admin access required'}));
+    }
+
+    // Check if request exists and get request details
+    final existingRequest = await _database.query(
+      '''SELECT id, student_name, course, school_year, purpose, ocr_data, address, 
+         approval_status, current_approval_step, approvals_received, gor, edst
+         FROM good_moral_requests WHERE id = @id''',
+      {'id': int.parse(id)},
+    );
+
+    if (existingRequest.isEmpty) {
+      return Response.notFound(jsonEncode({'error': 'Good moral request not found'}));
+    }
+
+    final requestData = existingRequest.first;
+    final currentStatus = requestData[7] as String?;
+    
+    // Don't allow approval if already approved or rejected
+    if (currentStatus == 'approved') {
+      return Response(400, body: jsonEncode({'error': 'Request is already approved'}));
+    }
+    if (currentStatus == 'rejected' || currentStatus == 'cancelled') {
+      return Response(400, body: jsonEncode({'error': 'Cannot approve a rejected or cancelled request'}));
+    }
+
+    final studentName = requestData[1] as String;
+    final course = requestData[2] as String?;
+    final schoolYear = requestData[3] as String?;
+    final purpose = requestData[4] as String?;
+    final address = requestData[6] as String?;
+    final gor = requestData[10] as String?;
+    final edst = requestData[11] as String?;
+    final currentStep = requestData[8] as int? ?? 1;
+    final approvalsReceived = requestData[9] as int? ?? 0;
+    
+    Map<String, dynamic> ocrData = {};
+    if (requestData[5] != null) {
+      try {
+        ocrData = (jsonDecode(requestData[5] as String) as Map).cast<String, dynamic>();
+      } catch (e) {
+        // Use empty map if invalid JSON
       }
+    }
 
-      final result = await _database.query('''
-        SELECT
-          gmr.id,
-          gmr.student_id,
-          gmr.student_name,
-          gmr.course,
-          gmr.purpose,
-          gmr.address,
-          gmr.school_year,
-          gmr.ocr_data,
-          gmr.status,
-          gmr.created_at,
-          gmr.updated_at,
-          gmr.admin_notes,
-          gmr.reviewed_at,
-          gmr.reviewed_by,
-          gmr.document_path,
-          gmr.active,
-          u.first_name,
-          u.last_name,
-          u.email
-        FROM good_moral_requests gmr
-        JOIN users u ON gmr.student_id = u.id
-        ORDER BY gmr.created_at DESC
-      ''');
+    // Prepare data for certificate generation
+    final now = DateTime.now();
+    final certificateData = {
+      'name': studentName,
+      'course': course ?? 'N/A',
+      'school_year': schoolYear ?? 'N/A',
+      'day': now.day.toString(),
+      'month_year': '${_getMonthName(now.month)} ${now.year}',
+      'purpose': purpose ?? 'N/A',
+      'gor': gor ?? 'N/A',
+      'date_of_payment': edst ?? 'N/A',
+    };
 
-      final requests = result.map((row) => {
-        'id': row[0],
-        'student_id': row[1],
-        'student_name': row[2],
-        'course': row[3],
-        'purpose': row[4],
-        'address': row[5],
-        'school_year': row[6],
-        'ocr_data': row[7],
-        'status': row[8],
-        'created_at': row[9] is DateTime ? (row[9] as DateTime).toIso8601String() : row[9]?.toString(),
-        'updated_at': row[10] is DateTime ? (row[10] as DateTime).toIso8601String() : row[10]?.toString(),
-        'admin_notes': row[11],
-        'reviewed_at': row[12] is DateTime ? (row[12] as DateTime).toIso8601String() : row[12]?.toString(),
-        'reviewed_by': row[13],
-        'document_path': row[14],
-        'active': row[15],
-        'first_name': row[16],
-        'last_name': row[17],
-        'email': row[18],
-      }).toList();
-
-      return Response.ok(jsonEncode({'requests': requests}));
+    // Generate certificate
+    String certificatePath;
+    try {
+      certificatePath = await generateGoodMoralDocx(certificateData);
     } catch (e) {
+      print('Error generating certificate: $e');
       return Response.internalServerError(
-        body: jsonEncode({'error': 'Failed to fetch good moral requests: $e'}),
+        body: jsonEncode({'error': 'Failed to generate certificate: $e'}),
       );
     }
+    
+    // Update to approved status with all necessary fields
+    await _database.execute(
+      '''UPDATE good_moral_requests 
+         SET approval_status = @status,
+             admin_approved = true,
+             admin_approved_at = NOW(),
+             admin_approved_by = @admin_id,
+             certificate_path = @certificate_path,
+             certificate_generated_at = NOW(),
+             approvals_received = @approvals_received,
+             current_approval_step = 4,
+             updated_at = NOW(),
+             updated_by = @admin_id
+         WHERE id = @id''',
+      {
+        'status': 'approved',
+        'id': int.parse(id),
+        'admin_id': adminId,
+        'certificate_path': certificatePath,
+        'approvals_received': 4 // All approvals received
+      },
+    );
+
+    return Response.ok(jsonEncode({
+      'message': 'Good moral request approved successfully',
+      'certificate_path': certificatePath,
+    }));
+  } catch (e) {
+    print('Error in approveGoodMoralRequest: $e');
+    return Response.internalServerError(
+      body: jsonEncode({'error': 'Failed to approve good moral request: $e'}),
+    );
   }
+}
 
-  Future<Response> approveGoodMoralRequest(Request request, String requestId) async {
-    try {
-      final counselorId = int.parse(request.url.queryParameters['counselor_id'] ?? '0');
-      if (!await _checkUserRole(counselorId, 'counselor')) {
-        return Response.forbidden(jsonEncode({'error': 'Counselor access required'}));
-      }
+// Helper function to get month name
+String _getMonthName(int month) {
+  const months = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+  return months[month - 1];
+}
 
-      // Check if request exists and get request details
-      final existingRequest = await _database.query(
-        'SELECT id, student_name, student_number, course, year_level, purpose, ocr_data FROM good_moral_requests WHERE id = @id',
-        {'id': int.parse(requestId)},
-      );
-
-      if (existingRequest.isEmpty) {
-        return Response.notFound(jsonEncode({'error': 'Good moral request not found'}));
-      }
-
-      final requestData = existingRequest.first;
-      final studentName = requestData[1] as String;
-      final studentNumber = requestData[2] as String;
-      final course = requestData[3] as String;
-      final yearLevel = requestData[4] as String;
-      final purpose = requestData[5] as String;
-      Map<String, dynamic> ocrData = {};
-      if (requestData[6] != null) {
-        try {
-          ocrData = (jsonDecode(requestData[6] as String) as Map).cast<String, dynamic>();
-        } catch (e) {
-          // Use empty map if invalid JSON
-        }
-      }
-
-      // Update status to approved
-      await _database.execute(
-        'UPDATE good_moral_requests SET status = @status, updated_at = NOW() WHERE id = @id',
-        {'status': 'approved', 'id': int.parse(requestId)},
-      );
-
-      // Generate PDF certificate
-      final certificatePath = await BackendDocumentGenerator.generateGoodMoralCertificate(
-        int.parse(requestId),
-        ocrData,
-        studentName,
-        studentNumber,
-        course,
-        yearLevel,
-        purpose,
-      );
-
-      if (certificatePath == null) {
-        return Response.internalServerError(
-          body: jsonEncode({'error': 'Request approved but failed to generate certificate'}),
-        );
-      }
-
-      return Response.ok(jsonEncode({
-        'message': 'Good moral request approved successfully',
-        'certificate_path': certificatePath
-      }));
-    } catch (e) {
-      return Response.internalServerError(
-        body: jsonEncode({'error': 'Failed to approve good moral request: $e'}),
-      );
+Future<Response> rejectGoodMoralRequest(Request request, String id) async {
+  try {
+    final adminId = int.parse(request.url.queryParameters['admin_id'] ?? '0');
+    if (!await _checkUserRole(adminId, 'admin')) {
+      return Response.forbidden(jsonEncode({'error': 'Admin access required'}));
     }
-  }
 
-  Future<Response> rejectGoodMoralRequest(Request request, String requestId) async {
-    try {
-      final counselorId = int.parse(request.url.queryParameters['counselor_id'] ?? '0');
-      if (!await _checkUserRole(counselorId, 'counselor')) {
-        return Response.forbidden(jsonEncode({'error': 'Counselor access required'}));
-      }
+    // Parse request body for rejection reason
+    final body = await request.readAsString();
+    final data = body.isNotEmpty ? jsonDecode(body) : <String, dynamic>{};
+    final rejectionReason = data['rejection_reason'] as String?;
 
-      // Check if request exists
-      final existingRequest = await _database.query(
-        'SELECT id FROM good_moral_requests WHERE id = @id',
-        {'id': int.parse(requestId)},
-      );
-
-      if (existingRequest.isEmpty) {
-        return Response.notFound(jsonEncode({'error': 'Good moral request not found'}));
-      }
-
-      // Update status to rejected with review info
-      await _database.execute(
-        'UPDATE good_moral_requests SET status = @status, reviewed_at = NOW(), reviewed_by = @reviewed_by, updated_at = NOW() WHERE id = @id',
-        {'status': 'rejected', 'reviewed_by': counselorId, 'id': int.parse(requestId)},
-      );
-
-      return Response.ok(jsonEncode({'message': 'Good moral request rejected successfully'}));
-    } catch (e) {
-      return Response.internalServerError(
-        body: jsonEncode({'error': 'Failed to reject good moral request: $e'}),
-      );
+    if (rejectionReason == null || rejectionReason.trim().isEmpty) {
+      return Response(400, body: jsonEncode({'error': 'Rejection reason is required'}));
     }
+
+    // Check if request exists
+    final existingRequest = await _database.query(
+      'SELECT id, approval_status FROM good_moral_requests WHERE id = @id',
+      {'id': int.parse(id)},
+    );
+
+    if (existingRequest.isEmpty) {
+      return Response.notFound(jsonEncode({'error': 'Good moral request not found'}));
+    }
+
+    final currentStatus = existingRequest.first[1] as String?;
+    
+    // Don't allow rejection if already approved or rejected
+    if (currentStatus == 'approved') {
+      return Response(400, body: jsonEncode({'error': 'Cannot reject an approved request'}));
+    }
+    if (currentStatus == 'rejected' || currentStatus == 'cancelled') {
+      return Response(400, body: jsonEncode({'error': 'Request is already rejected or cancelled'}));
+    }
+
+    // Update status to rejected with all necessary fields
+    await _database.execute(
+      '''UPDATE good_moral_requests
+         SET approval_status = @status,
+             rejection_reason = @rejection_reason,
+             rejected_at = NOW(),
+             rejected_by = @admin_id,
+             updated_at = NOW(),
+             updated_by = @admin_id
+         WHERE id = @id''',
+      {
+        'status': 'rejected',
+        'id': int.parse(id),
+        'admin_id': adminId,
+        'rejection_reason': rejectionReason,
+      },
+    );
+
+    return Response.ok(jsonEncode({'message': 'Good moral request rejected successfully'}));
+  } catch (e) {
+    print('Error in rejectGoodMoralRequest: $e');
+    return Response.internalServerError(
+      body: jsonEncode({'error': 'Failed to reject good moral request: $e'}),
+    );
   }
+}
+
+Future<Response> updateGoodMoralRequest(Request request, String id) async {
+  try {
+    final adminId = int.parse(request.url.queryParameters['admin_id'] ?? '0');
+    if (!await _checkUserRole(adminId, 'admin')) {
+      return Response.forbidden(jsonEncode({'error': 'Admin access required'}));
+    }
+
+    // Parse request body
+    final body = await request.readAsString();
+    final data = jsonDecode(body);
+
+    // Check if request exists
+    final existingRequest = await _database.query(
+      'SELECT id FROM good_moral_requests WHERE id = @id',
+      {'id': int.parse(id)},
+    );
+
+    if (existingRequest.isEmpty) {
+      return Response.notFound(jsonEncode({'error': 'Good moral request not found'}));
+    }
+
+    // Build update query
+    final updateFields = <String>[];
+    final params = <String, dynamic>{'id': int.parse(id)};
+
+    if (data['student_name'] != null) {
+      updateFields.add('student_name = @student_name');
+      params['student_name'] = data['student_name'];
+    }
+    if (data['student_number'] != null) {
+      updateFields.add('student_number = @student_number');
+      params['student_number'] = data['student_number'];
+    }
+    if (data['course'] != null) {
+      updateFields.add('course = @course');
+      params['course'] = data['course'];
+    }
+    if (data['school_year'] != null) {
+      updateFields.add('school_year = @school_year');
+      params['school_year'] = data['school_year'];
+    }
+    if (data['purpose'] != null) {
+      updateFields.add('purpose = @purpose');
+      params['purpose'] = data['purpose'];
+    }
+    if (data['address'] != null) {
+      updateFields.add('address = @address');
+      params['address'] = data['address'];
+    }
+    if (data['edst'] != null) {
+      updateFields.add('edst = @edst');
+      params['edst'] = data['edst'];
+    }
+    if (data['gor'] != null) {
+      updateFields.add('gor = @gor');
+      params['gor'] = data['gor'];
+    }
+    if (data['current_approval_step'] != null) {
+      final step = int.tryParse(data['current_approval_step'].toString());
+      if (step != null && step >= 1 && step <= 4) {
+        updateFields.add('current_approval_step = @current_approval_step');
+        params['current_approval_step'] = step;
+      }
+    }
+    if (data['approvals_received'] != null) {
+      updateFields.add('approvals_received = @approvals_received');
+      params['approvals_received'] = int.tryParse(data['approvals_received'].toString()) ?? 0;
+    }
+
+    if (updateFields.isNotEmpty) {
+      updateFields.add('updated_at = NOW()');
+      updateFields.add('updated_by = @updated_by');
+      params['updated_by'] = adminId;
+
+      final updateQuery = 'UPDATE good_moral_requests SET ${updateFields.join(', ')} WHERE id = @id';
+      await _database.execute(updateQuery, params);
+    }
+
+    return Response.ok(jsonEncode({'message': 'Good moral request updated successfully'}));
+  } catch (e) {
+    print('Error in updateGoodMoralRequest: $e');
+    return Response.internalServerError(
+      body: jsonEncode({'error': 'Failed to update good moral request: $e'}),
+    );
+  }
+}
+
+// Helper method to cancel a good moral request
+Future<Response> cancelGoodMoralRequest(Request request, String id) async {
+  try {
+    final adminId = int.parse(request.url.queryParameters['admin_id'] ?? '0');
+    if (!await _checkUserRole(adminId, 'admin')) {
+      return Response.forbidden(jsonEncode({'error': 'Admin access required'}));
+    }
+
+    // Check if request exists
+    final existingRequest = await _database.query(
+      'SELECT id, approval_status FROM good_moral_requests WHERE id = @id',
+      {'id': int.parse(id)},
+    );
+
+    if (existingRequest.isEmpty) {
+      return Response.notFound(jsonEncode({'error': 'Good moral request not found'}));
+    }
+
+    final currentStatus = existingRequest.first[1] as String?;
+    
+    if (currentStatus == 'approved') {
+      return Response(400, body: jsonEncode({'error': 'Cannot cancel an approved request'}));
+    }
+
+    // Update status to cancelled
+    await _database.execute(
+      '''UPDATE good_moral_requests
+         SET approval_status = @status,
+             updated_at = NOW(),
+             updated_by = @admin_id
+         WHERE id = @id''',
+      {
+        'status': 'cancelled',
+        'id': int.parse(id),
+        'admin_id': adminId,
+      },
+    );
+
+    return Response.ok(jsonEncode({'message': 'Good moral request cancelled successfully'}));
+  } catch (e) {
+    print('Error in cancelGoodMoralRequest: $e');
+    return Response.internalServerError(
+      body: jsonEncode({'error': 'Failed to cancel good moral request: $e'}),
+    );
+  }
+}
 
   // ================= DISCIPLINE CASES ENDPOINTS =================
 
@@ -1631,6 +1936,16 @@ class CounselorRoutes {
         return Response.forbidden(jsonEncode({'error': 'Counselor access required'}));
       }
 
+      // Pagination parameters
+      final page = int.tryParse(request.url.queryParameters['page'] ?? '1') ?? 1;
+      final limit = int.tryParse(request.url.queryParameters['limit'] ?? '10') ?? 10;
+      final offset = (page - 1) * limit;
+
+      // Get total count
+      final totalResult = await _database.query('SELECT COUNT(*) FROM re_admission_cases');
+      final total = totalResult.isNotEmpty ? totalResult.first[0] : 0;
+
+      // Get paginated results
       final result = await _database.query('''
         SELECT
           rac.id,
@@ -1651,7 +1966,8 @@ class CounselorRoutes {
         LEFT JOIN users u ON rac.counselor_id = u.id
         LEFT JOIN users ru ON rac.reviewed_by = ru.id
         ORDER BY rac.created_at DESC
-      ''');
+        LIMIT @limit OFFSET @offset
+      ''', {'limit': limit, 'offset': offset});
 
       final cases = result.map((row) => {
         'id': row[0],
@@ -1670,7 +1986,15 @@ class CounselorRoutes {
         'reviewed_by_name': row[13],
       }).toList();
 
-      return Response.ok(jsonEncode({'cases': cases}));
+      return Response.ok(jsonEncode({
+        'cases': cases,
+        'pagination': {
+          'page': page,
+          'limit': limit,
+          'total': total,
+          'total_pages': total != null ? ((total as int) / limit).ceil() : 0,
+        }
+      }));
     } catch (e) {
       return Response.internalServerError(
         body: jsonEncode({'error': 'Failed to fetch re-admission cases: $e'}),

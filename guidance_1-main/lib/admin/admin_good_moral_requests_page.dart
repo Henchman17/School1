@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import '../config.dart';
 
 class AdminGoodMoralRequestsPage extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -19,7 +20,7 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
   String _searchQuery = '';
   late TabController _tabController;
 
-  static const String apiBaseUrl = 'http://localhost:8080';
+  static const Duration apiTimeout = Duration(seconds: 30);
 
   @override
   void initState() {
@@ -37,9 +38,17 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
   Future<void> fetchGoodMoralRequests() async {
     try {
       final adminId = widget.userData?['id'] ?? 0;
+      final baseUrl = await AppConfig.apiBaseUrl;
       final response = await http.get(
-        Uri.parse('$apiBaseUrl/api/admin/good-moral-requests?admin_id=$adminId'),
+        Uri.parse('$baseUrl/api/admin/good-moral-requests?admin_id=$adminId'),
         headers: {'Content-Type': 'application/json'},
+      ).timeout(
+        apiTimeout,
+        onTimeout: () {
+          throw TimeoutException(
+            'Server is not responding. Please check your internet connection and try again.'
+          );
+        },
       );
 
       if (response.statusCode == 200) {
@@ -59,6 +68,13 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
           });
         }
       }
+    } on TimeoutException catch (e) {
+      if (mounted) {
+        setState(() {
+          errorMessage = e.message ?? 'Connection timed out. Please check your internet connection and try again.';
+          isLoading = false;
+        });
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -72,90 +88,348 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
   Future<void> approveRequest(int requestId) async {
     try {
       final adminId = widget.userData?['id'] ?? 0;
+      final baseUrl = await AppConfig.apiBaseUrl;
       final response = await http.put(
-        Uri.parse('$apiBaseUrl/api/admin/good-moral-requests/$requestId/approve?admin_id=$adminId'),
+        Uri.parse('$baseUrl/api/admin/good-moral-requests/$requestId/approve?admin_id=$adminId'),
         headers: {'Content-Type': 'application/json'},
+      ).timeout(
+        apiTimeout,
+        onTimeout: () {
+          throw TimeoutException(
+            'Server is not responding. Please check your internet connection and try again.'
+          );
+        },
       );
 
       if (response.statusCode == 200) {
         fetchGoodMoralRequests();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Request approved successfully'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Request approved successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
       } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to approve request'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to approve request'),
+          SnackBar(
+            content: Text('Error: $e'),
             backgroundColor: Colors.red,
           ),
         );
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
     }
   }
 
   Future<void> rejectRequest(int requestId, String reason) async {
     try {
       final adminId = widget.userData?['id'] ?? 0;
+      final baseUrl = await AppConfig.apiBaseUrl;
       final response = await http.put(
-        Uri.parse('$apiBaseUrl/api/admin/good-moral-requests/$requestId/reject?admin_id=$adminId'),
+        Uri.parse('$baseUrl/api/admin/good-moral-requests/$requestId/reject?admin_id=$adminId'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'admin_notes': reason}),
+      ).timeout(
+        apiTimeout,
+        onTimeout: () {
+          throw TimeoutException(
+            'Server is not responding. Please check your internet connection and try again.'
+          );
+        },
       );
 
       if (response.statusCode == 200) {
         fetchGoodMoralRequests();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Request rejected'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Request rejected'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
       } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to reject request'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to reject request'),
+          SnackBar(
+            content: Text('Error: $e'),
             backgroundColor: Colors.red,
           ),
         );
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
     }
   }
 
-  Future<void> downloadDocument(String documentPath, int requestId) async {
+  Future<void> generateDocument(String? documentPath, int requestId) async {
     try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Downloading document for request #$requestId...'),
-          backgroundColor: Colors.blue,
-        ),
+      final adminId = widget.userData?['id'] ?? 0;
+      final baseUrl = await AppConfig.apiBaseUrl;
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/admin/good-moral-requests/$requestId/download?admin_id=$adminId'),
+      ).timeout(
+        apiTimeout,
+        onTimeout: () {
+          throw TimeoutException(
+            'Server is not responding. Please check your internet connection and try again.'
+          );
+        },
       );
-      // TODO: Implement actual download functionality
-      // You may need to use packages like url_launcher or dio for downloading
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Document downloaded successfully for request #$requestId'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to download document'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error downloading: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
+  }
+
+  void _showEditDialog(dynamic request) {
+    final requestId = request['id'];
+    final TextEditingController studentNameController = TextEditingController(text: request['student_name'] ?? '');
+    final TextEditingController studentNumberController = TextEditingController(text: request['student_number'] ?? '');
+    final TextEditingController courseController = TextEditingController(text: request['course'] ?? '');
+    final TextEditingController schoolYearController = TextEditingController(text: request['school_year'] ?? '');
+    final TextEditingController purposeController = TextEditingController(text: request['purpose'] ?? '');
+    final TextEditingController addressController = TextEditingController(text: request['address'] ?? '');
+    final TextEditingController gorController = TextEditingController(text: request['gor'] ?? '');
+    final TextEditingController edstController = TextEditingController(text: request['edst'] ?? '');
+    final TextEditingController notesController = TextEditingController(text: request['admin_notes'] ?? '');
+    final TextEditingController approvalsReceivedController = TextEditingController(text: request['approvals_received']?.toString() ?? '0');
+    int selectedApprovalStep = request['current_approval_step'] ?? 1;
+
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit Request'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Request #$requestId'),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: studentNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Student Name',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: studentNumberController,
+                      decoration: const InputDecoration(
+                        labelText: 'Student Number',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: courseController,
+                      decoration: const InputDecoration(
+                        labelText: 'Course',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: schoolYearController,
+                      decoration: const InputDecoration(
+                        labelText: 'School Year',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: purposeController,
+                      decoration: const InputDecoration(
+                        labelText: 'Purpose',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: addressController,
+                      decoration: const InputDecoration(
+                        labelText: 'Address',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: gorController,
+                      decoration: const InputDecoration(
+                        labelText: 'GOR',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: edstController,
+                      decoration: const InputDecoration(
+                        labelText: 'EDST',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<int>(
+                      value: selectedApprovalStep,
+                      decoration: const InputDecoration(
+                        labelText: 'Current Approval Step',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [1, 2, 3, 4].map((int value) {
+                        return DropdownMenuItem<int>(
+                          value: value,
+                          child: Text('Step $value'),
+                        );
+                      }).toList(),
+                      onChanged: (int? newValue) {
+                        if (newValue != null) {
+                          setDialogState(() {
+                            selectedApprovalStep = newValue;
+                          });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: approvalsReceivedController,
+                      decoration: const InputDecoration(
+                        labelText: 'Approvals Received',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: notesController,
+                      decoration: const InputDecoration(
+                        labelText: 'Admin Notes',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 4,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    final updatedData = {
+                      'student_name': studentNameController.text,
+                      'student_number': studentNumberController.text,
+                      'course': courseController.text,
+                      'school_year': schoolYearController.text,
+                      'purpose': purposeController.text,
+                      'address': addressController.text,
+                      'gor': gorController.text,
+                      'edst': edstController.text,
+                      'current_approval_step': selectedApprovalStep,
+                      'approvals_received': int.tryParse(approvalsReceivedController.text) ?? 0,
+                      'admin_notes': notesController.text,
+                    };
+                    Navigator.of(dialogContext).pop();
+                    try {
+                      final adminId = widget.userData?['id'] ?? 0;
+                      final baseUrl = await AppConfig.apiBaseUrl;
+                      final response = await http.put(
+                        Uri.parse('$baseUrl/api/admin/good-moral-requests/$requestId?admin_id=$adminId'),
+                        headers: {'Content-Type': 'application/json'},
+                        body: jsonEncode(updatedData),
+                      ).timeout(
+                        apiTimeout,
+                        onTimeout: () {
+                          throw TimeoutException(
+                            'Server is not responding. Please check your internet connection and try again.'
+                          );
+                        },
+                      );
+                      if (response.statusCode == 200) {
+                        fetchGoodMoralRequests();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Request updated'), backgroundColor: Colors.green),
+                          );
+                        }
+                      } else {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Failed to update request'), backgroundColor: Colors.red),
+                          );
+                        }
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showRequestDetails(dynamic request) {
@@ -168,7 +442,7 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
     final schoolYear = request['school_year'] ?? 'N/A';
     final purpose = request['purpose'] ?? 'N/A';
     final address = request['address'] ?? 'N/A';
-    final status = request['status'] ?? 'pending';
+    final status = request['approval_status'] ?? 'pending';
     final createdAt = request['created_at'] ?? '';
     final reviewedAt = request['reviewed_at'] ?? 'N/A';
     final adminNotes = request['admin_notes'] ?? 'N/A';
@@ -180,7 +454,9 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
           children: [
             const Icon(Icons.verified_user, color: Colors.blue),
             const SizedBox(width: 8),
-            Text('Request #$requestId Details'),
+            Flexible(
+              child: Text('Request #$requestId Details'),
+            ),
           ],
         ),
         content: SingleChildScrollView(
@@ -246,7 +522,7 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
     final studentName = '$firstName $lastName'.trim().isEmpty ? 'Unknown' : '$firstName $lastName'.trim();
     final studentId = request['user_student_id'] ?? 'N/A';
     final purpose = request['purpose'] ?? 'N/A';
-    final status = request['status'] ?? 'pending';
+    final status = request['approval_status'] ?? 'pending';
     final createdAt = request['created_at'] ?? '';
     final documentPath = request['document_path'];
 
@@ -288,30 +564,34 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.blue.shade100,
-                          borderRadius: BorderRadius.circular(12),
+                  Flexible(
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.verified_user, color: Colors.blue, size: 20),
                         ),
-                        child: const Icon(Icons.verified_user, color: Colors.blue, size: 20),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Request #$requestId',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                        const SizedBox(width: 12),
+                        Flexible(
+                          child: Text(
+                            'Request #$requestId',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                   Chip(
                     label: Text(
                       status.toUpperCase(),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
                     ),
                     backgroundColor: statusColor,
                     elevation: 2,
@@ -323,9 +603,11 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
                 children: [
                   const Icon(Icons.person, size: 16, color: Colors.grey),
                   const SizedBox(width: 8),
-                  Text(
-                    'Student: $studentName',
-                    style: const TextStyle(fontSize: 14),
+                  Expanded(
+                    child: Text(
+                      'Student: $studentName',
+                      style: const TextStyle(fontSize: 14),
+                    ),
                   ),
                 ],
               ),
@@ -334,9 +616,11 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
                 children: [
                   const Icon(Icons.badge, size: 16, color: Colors.grey),
                   const SizedBox(width: 8),
-                  Text(
-                    'Student ID: $studentId',
-                    style: const TextStyle(fontSize: 14),
+                  Expanded(
+                    child: Text(
+                      'Student ID: $studentId',
+                      style: const TextStyle(fontSize: 14),
+                    ),
                   ),
                 ],
               ),
@@ -360,16 +644,19 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
                 children: [
                   const Icon(Icons.access_time, size: 16, color: Colors.grey),
                   const SizedBox(width: 8),
-                  Text(
-                    'Submitted: $createdAt',
-                    style: const TextStyle(fontSize: 14, color: Colors.grey),
+                  Expanded(
+                    child: Text(
+                      'Submitted: $createdAt',
+                      style: const TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
                   ),
                 ],
               ),
               const SizedBox(height: 16),
               if (isApproved)
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
                     OutlinedButton.icon(
                       onPressed: () => _showRequestDetails(request),
@@ -383,11 +670,20 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      onPressed: () => _showEditDialog(request),
+                      icon: const Icon(Icons.edit, size: 16),
+                      label: const Text('Edit'),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: Colors.orange),
+                        foregroundColor: Colors.orange,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
                     ElevatedButton.icon(
-                      onPressed: documentPath != null 
-                        ? () => downloadDocument(documentPath, requestId)
-                        : null,
+                      onPressed: () => generateDocument(documentPath, requestId),
                       icon: const Icon(Icons.download, size: 16),
                       label: const Text('Download'),
                       style: ElevatedButton.styleFrom(
@@ -402,8 +698,9 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
                   ],
                 )
               else
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
                     OutlinedButton.icon(
                       onPressed: () => _showRequestDetails(request),
@@ -417,13 +714,12 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
                     OutlinedButton.icon(
                       onPressed: () async {
                         final reasonController = TextEditingController();
                         final reason = await showDialog<String>(
                           context: context,
-                          builder: (context) => AlertDialog(
+                          builder: (dialogContext) => AlertDialog(
                             title: const Text('Reject Request'),
                             content: TextField(
                               controller: reasonController,
@@ -435,11 +731,11 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
                             ),
                             actions: [
                               TextButton(
-                                onPressed: () => Navigator.of(context).pop(),
+                                onPressed: () => Navigator.of(dialogContext).pop(),
                                 child: const Text('Cancel'),
                               ),
                               ElevatedButton(
-                                onPressed: () => Navigator.of(context).pop(reasonController.text),
+                                onPressed: () => Navigator.of(dialogContext).pop(reasonController.text),
                                 style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                                 child: const Text('Reject'),
                               ),
@@ -460,7 +756,6 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
                     ElevatedButton.icon(
                       onPressed: () => approveRequest(requestId),
                       icon: const Icon(Icons.check, size: 16),
@@ -525,160 +820,158 @@ class _AdminGoodMoralRequestsPageState extends State<AdminGoodMoralRequestsPage>
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (isLoading) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Good Moral Requests'),
-          backgroundColor: const Color(0xFF1E88E5),
-        ),
-        body: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('Loading requests...'),
-            ],
+    @override
+    Widget build(BuildContext context) {
+      if (isLoading) {
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Good Moral Requests'),
+            backgroundColor: const Color(0xFF1E88E5),
           ),
-        ),
-      );
-    }
+          body: const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Loading requests...'),
+              ],
+            ),
+          ),
+        );
+      }
 
-    if (errorMessage.isNotEmpty) {
+      if (errorMessage.isNotEmpty) {
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Good Moral Requests'),
+            backgroundColor: const Color(0xFF1E88E5),
+          ),
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 64, color: Colors.red),
+                const SizedBox(height: 16),
+                Text(errorMessage, textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: fetchGoodMoralRequests,
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      final pendingRequests = goodMoralRequests.where((r) => r['approval_status'] == 'pending').toList();
+      final approvedRequests = goodMoralRequests.where((r) => r['approval_status'] == 'approved').toList();
+
       return Scaffold(
         appBar: AppBar(
-          title: const Text('Good Moral Requests'),
+          automaticallyImplyLeading: false,
+          title: const Text(
+            'Good Moral Requests',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
           backgroundColor: const Color(0xFF1E88E5),
-        ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.error_outline, size: 64, color: Colors.red),
-              const SizedBox(height: 16),
-              Text(errorMessage, textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: fetchGoodMoralRequests,
-                child: const Text('Retry'),
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: fetchGoodMoralRequests,
+              tooltip: 'Refresh',
+            ),
+          ],
+          bottom: TabBar(
+            controller: _tabController,
+            indicatorColor: Colors.white,
+            indicatorWeight: 3,
+            tabs: [
+              Tab(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.pending_actions),
+                    const SizedBox(width: 8),
+                    Text('For Approval (${pendingRequests.length})'),
+                  ],
+                ),
+              ),
+              Tab(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.check_circle),
+                    const SizedBox(width: 8),
+                    Text('Approved (${approvedRequests.length})'),
+                  ],
+                ),
               ),
             ],
           ),
         ),
-      );
-    }
-
-    final pendingRequests = goodMoralRequests.where((r) => r['status'] == 'pending').toList();
-    final approvedRequests = goodMoralRequests.where((r) => r['status'] == 'approved').toList();
-
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text(
-          'Good Moral Requests',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: const Color(0xFF1E88E5),
-        elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: fetchGoodMoralRequests,
-            tooltip: 'Refresh',
-          ),
-        ],
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          indicatorWeight: 3,
-          tabs: [
-            Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.pending_actions),
-                  const SizedBox(width: 8),
-                  Text('For Approval (${pendingRequests.length})'),
+        body: Column(
+          children: [
+            Container(
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.blue.shade50, Colors.white],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.blue.shade100.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
                 ],
               ),
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: TextField(
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Search by student name or ID...',
+                    prefixIcon: const Icon(Icons.search, color: Colors.blue),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.blue.shade200, width: 1),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.blue, width: 2),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                ),
+              ),
             ),
-            Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
                 children: [
-                  const Icon(Icons.check_circle),
-                  const SizedBox(width: 8),
-                  Text('Approved (${approvedRequests.length})'),
+                  _buildTabContent(pendingRequests, false),
+                  _buildTabContent(approvedRequests, true),
                 ],
               ),
             ),
           ],
         ),
-      ),
-      body: Column(
-        children: [
-          Container(
-            margin: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.blue.shade50, Colors.white],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.blue.shade100.withOpacity(0.3),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: TextField(
-                onChanged: (value) {
-                  setState(() {
-                    _searchQuery = value;
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText: 'Search by student name or ID...',
-                  prefixIcon: const Icon(Icons.search, color: Colors.blue),
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.blue.shade200, width: 1),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.blue, width: 2),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                _buildTabContent(pendingRequests, false),
-                _buildTabContent(approvedRequests, true),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
+      );
+    }
   }
-
-
-}

@@ -7,12 +7,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
+import 'package:provider/provider.dart';
+import 'package:image/image.dart' as img;
 import '../config.dart';
+import '../providers/form_settings_provider.dart';
 
 // OCR Processing Service
 class OcrProcessor {
-  static const String _apiKey = "helloworld";
-  static const String _apiUrl = "https://api.ocr.space/parse/image";
+  static const String _apiKey = AppConfig.OCR_API_KEY;
+  static const String _apiUrl = AppConfig.OCR_API_URL;
   
   static Future<bool> isImageValid(File imageFile) async {
     if (!await imageFile.exists()) return false;
@@ -25,12 +28,39 @@ class OcrProcessor {
       ..fields['apikey'] = _apiKey
       ..fields['language'] = 'eng'
       ..fields['isOverlayRequired'] = 'false'
+      ..fields['OCREngine'] = '2'  // Try engine 2 (more accurate)
+      ..fields['scale'] = 'true'    // Auto-scale image
+      ..fields['isTable'] = 'true'  // Better for forms
       ..files.add(await http.MultipartFile.fromPath('file', imageFile.path));
 
     final response = await request.send();
     final responseBody = await response.stream.bytesToString();
+
+    print('OCR API Response Status: ${response.statusCode}');
+    print('OCR API Response Body: $responseBody');
+
+    if (response.statusCode != 200) {
+      throw Exception('OCR API request failed with status ${response.statusCode}: $responseBody');
+    }
+
     final jsonData = json.decode(responseBody);
-    final extractedText = jsonData["ParsedResults"]?[0]["ParsedText"] ?? "";
+
+    // Check for API errors
+    if (jsonData.containsKey('ErrorMessage')) {
+      throw Exception('OCR API Error: ${jsonData['ErrorMessage']}');
+    }
+
+    if (jsonData.containsKey('OCRExitCode') && jsonData['OCRExitCode'] != 1) {
+      throw Exception('OCR processing failed with exit code: ${jsonData['OCRExitCode']}');
+    }
+
+    final extractedText = jsonData["ParsedResults"]?[0]?["ParsedText"] ?? "";
+
+    if (extractedText.isEmpty) {
+      throw Exception('No text was extracted from the image. Please ensure the image is clear and contains readable text.');
+    }
+
+    print('Extracted Text: $extractedText');
 
     return _parseSlipText(extractedText);
   }
@@ -83,13 +113,13 @@ class OcrProcessor {
         if (data['date']!.isEmpty && i + 1 < lines.length) {
           final nextLine = lines[i + 1].toLowerCase();
           if (!nextLine.contains('name') && !nextLine.contains('address') && 
-              !nextLine.contains('course') && !nextLine.contains('purpose')) {
+              !nextLine.contains('grade/course/course') && !nextLine.contains('purpose')) {
             data['date'] = lines[i + 1].trim();
           }
         }
       }
       // Extract name
-      else if ((lowerLine.contains('name:') || lowerLine.contains('student name')) && data['name']!.isEmpty) {
+      else if ((lowerLine.contains('name') || lowerLine.contains('student name')) && data['name']!.isEmpty) {
         if (line.contains(':')) {
           data['name'] = line.split(':').last.trim();
         } else {
@@ -98,7 +128,7 @@ class OcrProcessor {
         // If name is empty, check next line
         if (data['name']!.isEmpty && i + 1 < lines.length) {
           final nextLine = lines[i + 1].toLowerCase();
-          if (!nextLine.contains('address') && !nextLine.contains('course') && 
+          if (!nextLine.contains('address') && !nextLine.contains('course') &&
               !nextLine.contains('purpose') && !nextLine.contains('date')) {
             data['name'] = lines[i + 1].trim();
           }
@@ -158,25 +188,67 @@ class OcrProcessor {
           }
         }
       }
-      // Extract purpose
-      else if (lowerLine.contains('purpose') && data['purpose']!.isEmpty) {
+      // Extract purpose - look for various possible labels
+      else if ((lowerLine.contains('purpose') ||
+                lowerLine.contains('reason') ||
+                lowerLine.contains('for what purpose') ||
+                lowerLine.contains('intended for')) && data['purpose']!.isEmpty) {
         if (line.contains(':')) {
           data['purpose'] = line.split(':').last.trim();
         } else {
-          data['purpose'] = line.replaceAll(RegExp(r'purpose[:\s]*', caseSensitive: false), '').trim();
+          data['purpose'] = line.replaceAll(RegExp(r'(purpose|reason|for what purpose|intended for)[:\s]*', caseSensitive: false), '').trim();
         }
         // If purpose is empty, check next line(s) - purpose might span multiple lines
         if (data['purpose']!.isEmpty && i + 1 < lines.length) {
           final nextLine = lines[i + 1].toLowerCase();
-          if (!nextLine.contains('name') && !nextLine.contains('address') && 
+          if (!nextLine.contains('name') && !nextLine.contains('address') &&
               !nextLine.contains('course') && !nextLine.contains('date') &&
-              !nextLine.contains('last attendance')) {
+              !nextLine.contains('last attendance') && !nextLine.contains('cellphone') &&
+              !nextLine.contains('check') && !nextLine.contains('signature') &&
+              !nextLine.contains('undergraduate') && !nextLine.contains('graduate')) {
             data['purpose'] = lines[i + 1].trim();
+            // Check one more line if purpose spans multiple lines
+            if (i + 2 < lines.length && (data['purpose']?.length ?? 0) < 10) {
+              final nextNextLine = lines[i + 2].toLowerCase();
+              if (!nextNextLine.contains('name') && !nextNextLine.contains('address') &&
+                  !nextNextLine.contains('course') && !nextNextLine.contains('date') &&
+                  !nextNextLine.contains('last attendance') && !nextNextLine.contains('cellphone') &&
+                  !nextNextLine.contains('check') && !nextNextLine.contains('signature') &&
+                  !nextNextLine.contains('undergraduate') && !nextNextLine.contains('graduate')) {
+                data['purpose'] = (data['purpose'] ?? '') + ' ' + lines[i + 2].trim();
+              }
+            }
+          }
+        }
+      }
+      // Alternative: Look for purpose after the "Kindly Check" section
+      else if (lowerLine.contains('kindly check') && data['purpose']!.isEmpty) {
+        // Look for purpose in the lines after the check section
+        for (int j = i + 1; j < lines.length && j < i + 10; j++) { // Check next 10 lines
+          final checkLine = lines[j].toLowerCase();
+          if ((checkLine.contains('purpose') || checkLine.contains('reason') ||
+               checkLine.contains('for what purpose') || checkLine.contains('intended for'))) {
+            if (lines[j].contains(':')) {
+              data['purpose'] = lines[j].split(':').last.trim();
+            } else {
+              data['purpose'] = lines[j].replaceAll(RegExp(r'(purpose|reason|for what purpose|intended for)[:\s]*', caseSensitive: false), '').trim();
+            }
+            break;
+          }
+          // If we find a line that doesn't contain form field keywords, it might be the purpose
+          else if (!checkLine.contains('name') && !checkLine.contains('address') &&
+                   !checkLine.contains('course') && !checkLine.contains('date') &&
+                   !checkLine.contains('last attendance') && !checkLine.contains('cellphone') &&
+                   !checkLine.contains('signature') && !checkLine.contains('undergraduate') &&
+                   !checkLine.contains('graduate') && lines[j].trim().isNotEmpty) {
+            data['purpose'] = lines[j].trim();
+            break;
           }
         }
       }
     }
 
+    print('Parsed data: $data');
     return data;
   }
 }
@@ -195,6 +267,8 @@ class _GoodMoralRequestState extends State<GoodMoralRequest> {
   File? _uploadedImage;
   Map<String, String> _extractedData = {};
   bool _isProcessing = false;
+  Map<String, dynamic>? _currentRequest;
+  bool _isCheckingStatus = false;
 
   final List<String> _steps = [
     'Download Form',
@@ -238,11 +312,49 @@ class _GoodMoralRequestState extends State<GoodMoralRequest> {
   Future<void> _clearAllData() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('ocr_extracted_data');
-    
+
     setState(() {
       _extractedData.clear();
       _uploadedImage = null;
+      _currentRequest = null;
     });
+  }
+
+  Future<void> _checkCurrentRequestStatus() async {
+    setState(() {
+      _isCheckingStatus = true;
+    });
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userId = prefs.getInt('user_id');
+
+      if (userId == null) return;
+
+      final apiUrl = await AppConfig.apiBaseUrl;
+      final response = await http.get(
+        Uri.parse('$apiUrl/api/student/good-moral-requests/approval_status?user_id=$userId'),
+        headers: {'Content-Type': 'application/json'},
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          _currentRequest = data['request'];
+          _isCheckingStatus = false;
+        });
+      } else {
+        setState(() {
+          _currentRequest = null;
+          _isCheckingStatus = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _currentRequest = null;
+        _isCheckingStatus = false;
+      });
+    }
   }
 
   bool _validateData(Map<String, String> data) {
@@ -259,9 +371,9 @@ class _GoodMoralRequestState extends State<GoodMoralRequest> {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(
       source: source,
-      imageQuality: 90,
-      maxWidth: 1920,
-      maxHeight: 1080,
+      imageQuality: 85,
+      maxWidth: 1600,
+      maxHeight: 1200,
     );
 
     if (pickedFile == null) return;
@@ -307,84 +419,82 @@ class _GoodMoralRequestState extends State<GoodMoralRequest> {
 
   // Request Submission
   Future<void> _submitGoodMoralRequest() async {
-    if (_extractedData.isEmpty) {
-      _showWarningDialog(
-        'No Data Available',
-        'Please upload and process a request slip first.',
-      );
-      return;
-    }
-
-    if (!_validateData(_extractedData)) {
-      _showWarningDialog(
-        'Incomplete Data',
-        'Required information is missing. Please provide all required fields.',
-      );
-      return;
-    }
-
-    setState(() => _isProcessing = true);
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final userId = prefs.getInt('user_id');
-      
-      if (userId == null) throw Exception('User not logged in');
-
-      final baseUrl = await AppConfig.apiBaseUrl;
-      final requestUrl = '$baseUrl/api/student/good-moral-requests';
-      
-      print('DEBUG: Submitting to URL: $requestUrl'); // Debug log
-      print('DEBUG: Student ID: $userId'); // Debug log
-      
-      final response = await http.post(
-        Uri.parse(requestUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'student_id': userId,
-          'student_name': _extractedData['name'],
-          'course': _extractedData['course'],
-          'purpose': _extractedData['purpose'],
-          'ocr_data': _extractedData,
-          'status': 'pending',
-          'address': _extractedData['address'],
-          'school_year': _extractedData['school_year'],
-        }),
-      );
-
-      print('DEBUG: Response status: ${response.statusCode}'); // Debug log
-      print('DEBUG: Response body: ${response.body}'); // Debug log
-
-      setState(() => _isProcessing = false);
-
-      if (!mounted) return;
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        await _clearAllData();
-        _showSuccessDialog(
-          'Request Submitted',
-          'Your Good Moral Certificate request has been submitted successfully. You will be notified once it is reviewed.',
-        );
-      } else {
-        // Try to parse error message
-        String errorMessage = 'Failed to submit request';
-        try {
-          final errorData = jsonDecode(response.body);
-          errorMessage = errorData['error'] ?? errorData['message'] ?? errorMessage;
-        } catch (e) {
-          // If response is not JSON, use the raw body
-          errorMessage = response.body.isNotEmpty ? response.body : 'Server returned status ${response.statusCode}';
-        }
-        throw Exception(errorMessage);
-      }
-    } catch (e) {
-      setState(() => _isProcessing = false);
-      if (!mounted) return;
-      
-      print('DEBUG: Error occurred: $e'); // Debug log
-      _showErrorDialog('Error', 'Failed to submit request: $e');
-    }
+  if (_extractedData.isEmpty) {
+    _showWarningDialog(
+      'No Data Available',
+      'Please upload and process a request slip first.',
+    );
+    return;
   }
+
+  if (!_validateData(_extractedData)) {
+    _showWarningDialog(
+      'Incomplete Data',
+      'Required information is missing. Please provide all required fields.',
+    );
+    return;
+  }
+
+  setState(() => _isProcessing = true);
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('user_id');
+    
+    if (userId == null) throw Exception('User not logged in');
+
+    final baseUrl = await AppConfig.apiBaseUrl;
+    final requestUrl = '$baseUrl/api/student/good-moral-requests';
+    
+    print('DEBUG: Submitting to URL: $requestUrl');
+    print('DEBUG: Student ID: $userId');
+    
+    final response = await http.post(
+      Uri.parse(requestUrl),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'student_id': userId,
+        'student_name': _extractedData['name'],
+        'course': _extractedData['course'],
+        'purpose': _extractedData['purpose'],
+        'ocr_data': _extractedData,
+        'approval_status': 'pending',
+        'address': _extractedData['address'],
+        'school_year': _extractedData['school_year'],
+      }),
+    );
+
+    print('DEBUG: Response status: ${response.statusCode}');
+    print('DEBUG: Response body: ${response.body}');
+
+    setState(() => _isProcessing = false);
+
+    if (!mounted) return;
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      await _clearAllData();
+      _showSuccessDialog(
+        'Request Submitted',
+        'Your Good Moral Certificate request has been submitted successfully. You will be notified once it is reviewed.',
+      );
+    } else {
+      String errorMessage = 'Failed to submit request';
+      try {
+        final errorData = jsonDecode(response.body);
+        errorMessage = errorData['error'] ?? errorData['message'] ?? errorMessage;
+      } catch (e) {
+        errorMessage = response.body.isNotEmpty ? response.body : 'Server returned status ${response.statusCode}';
+      }
+      throw Exception(errorMessage);
+    }
+  } catch (e) {
+    setState(() => _isProcessing = false);
+    if (!mounted) return;
+    
+    print('DEBUG: Error occurred: $e');
+    _showErrorDialog('Error', 'Failed to submit request: $e');
+  }
+}
 
   // Request Slip Download
   Future<void> _downloadRequestSlip() async {
@@ -833,6 +943,62 @@ class _GoodMoralRequestState extends State<GoodMoralRequest> {
     );
   }
 
+  Widget _buildApprovalStep(String title, int stepNumber, int currentStep, int approvalsReceived) {
+    bool isCompleted = approvalsReceived >= stepNumber;
+    bool isCurrent = currentStep == stepNumber && !isCompleted;
+
+    return Column(
+      children: [
+        Container(
+          width: 60,
+          height: 60,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isCompleted
+                ? Colors.green
+                : isCurrent
+                    ? Colors.orange
+                    : Colors.grey.shade300,
+            border: Border.all(
+              color: isCompleted
+                  ? Colors.green.shade700
+                  : isCurrent
+                      ? Colors.orange.shade700
+                      : Colors.grey.shade400,
+              width: 2,
+            ),
+          ),
+          child: Center(
+            child: isCompleted
+                ? const Icon(Icons.check, color: Colors.white, size: 24)
+                : Text(
+                    '$stepNumber',
+                    style: TextStyle(
+                      color: isCurrent ? Colors.white : Colors.grey.shade600,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+            color: isCompleted
+                ? Colors.green.shade800
+                : isCurrent
+                    ? Colors.orange.shade800
+                    : Colors.grey.shade600,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+
   Widget _buildDataField(String key, String value) {
     final icons = {
       'name': Icons.person,
@@ -1140,6 +1306,179 @@ class _GoodMoralRequestState extends State<GoodMoralRequest> {
 
   @override
   Widget build(BuildContext context) {
+    final formSettingsProvider = Provider.of<FormSettingsProvider>(context);
+    final formSettings = formSettingsProvider.formSettings;
+
+    if (formSettings['good_moral_request_enabled'] != true) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.verified_user, color: Colors.white, size: 28),
+              SizedBox(width: 8),
+              Text('Request of Good Moral', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          backgroundColor: const Color.fromARGB(255, 30, 182, 88),
+          elevation: 4,
+        ),
+        body: Container(
+          height: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.lightGreen.withOpacity(0.3), Colors.green.shade900],
+            ),
+          ),
+          child: Center(
+            child: Text(
+              'Good Moral Request is currently disabled by the administrator.',
+              style: TextStyle(fontSize: 18, color: Colors.white),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Show current request status if exists
+    if (_currentRequest != null && !_isCheckingStatus) {
+      final status = _currentRequest!['approval_status'];
+      final currentStep = _currentRequest!['current_approval_step'];
+      final approvalsReceived = _currentRequest!['approvals_received'];
+
+      return Scaffold(
+        appBar: AppBar(
+          title: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.verified_user, color: Colors.white, size: 28),
+              SizedBox(width: 8),
+              Text('Request of Good Moral', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          backgroundColor: const Color.fromARGB(255, 30, 182, 88),
+          elevation: 4,
+        ),
+        body: Container(
+          height: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Colors.lightGreen.withOpacity(0.3), Colors.green.shade900],
+            ),
+          ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              children: [
+                // Current Request Status
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        status == 'approved' ? Icons.check_circle :
+                        status == 'rejected' ? Icons.cancel :
+                        Icons.pending,
+                        color: status == 'approved' ? Colors.green :
+                               status == 'rejected' ? Colors.red :
+                               Colors.orange,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        status == 'approved' ? 'Request Approved!' :
+                        status == 'rejected' ? 'Request Rejected' :
+                        'Request Under Review',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: status == 'approved' ? Colors.green.shade800 :
+                                 status == 'rejected' ? Colors.red.shade800 :
+                                 Colors.orange.shade800,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        status == 'approved' ?
+                        'Your Good Moral Certificate request has been approved and is ready for download.' :
+                        status == 'rejected' ?
+                        'Your request has been rejected. Please contact your guidance counselor for more information.' :
+                        'Your request is currently being reviewed by the approval committee.',
+                        style: TextStyle(fontSize: 16, color: Colors.grey.shade700),
+                        textAlign: TextAlign.center,
+                      ),
+                      if (status == 'pending') ...[
+                        const SizedBox(height: 24),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.blue.shade200),
+                          ),
+                          child: Column(
+                            children: [
+                              const Text(
+                                'Approval Progress',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  _buildApprovalStep('Academic Head', 1, currentStep, approvalsReceived),
+                                  _buildApprovalStep('Student Affairs', 2, currentStep, approvalsReceived),
+                                  _buildApprovalStep('Administrative', 3, currentStep, approvalsReceived),
+                                  _buildApprovalStep('Executive Head', 4, currentStep, approvalsReceived),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (status == 'approved') ...[
+                        const SizedBox(height: 24),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            // TODO: Implement certificate download
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Certificate download will be implemented')),
+                            );
+                          },
+                          icon: const Icon(Icons.download),
+                          label: const Text('Download Certificate'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Row(

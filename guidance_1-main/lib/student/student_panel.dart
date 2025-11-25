@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'dart:async';
+import 'package:provider/provider.dart';
 import 'guidance_scheduling_page.dart';
 import 'answerable_forms.dart';
 import 'good_moral_request.dart';
@@ -9,6 +10,8 @@ import 'psych_exxam.dart';
 import '../login_page.dart';
 import '../settings.dart';
 import '../shared_enums.dart';
+import '../providers/auth_provider.dart';
+import '../providers/form_settings_provider.dart';
 
 class StudentPanel extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -29,25 +32,22 @@ class _StudentPanelState extends State<StudentPanel> with SingleTickerProviderSt
   List<Map<String, dynamic>> _goodMoralNotifications = [];
   List<Map<String, dynamic>> _allNotifications = [];
   bool _isLoadingNotifications = false;
-  Map<String, bool> _formSettings = {
-    'scrf_enabled': true,
-    'routine_interview_enabled': true,
-    'good_moral_request_enabled': true,
-    'guidance_scheduling_enabled': true,
-    'dass21_enabled': false,
-  };
-  bool _isLoadingFormSettings = false;
+
   List<Map<String, dynamic>> _studentForms = [];
   bool _isLoadingForms = false;
 
   static const String apiBaseUrl = 'http://10.0.2.2:8080';
+
+
 
   @override
   void initState() {
     super.initState();
     _currentUser = widget.userData;
     _fetchAllNotifications();
-    _fetchFormSettings();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<FormSettingsProvider>(context, listen: false).fetchFormSettings();
+    });
     _fetchStudentForms();
   }
 
@@ -172,43 +172,7 @@ class _StudentPanelState extends State<StudentPanel> with SingleTickerProviderSt
     });
   }
 
-  Future<void> _fetchFormSettings() async {
-    setState(() {
-      _isLoadingFormSettings = true;
-    });
 
-    try {
-      final response = await http.get(
-        Uri.parse('$apiBaseUrl/api/admin/form-settings?admin_id=1'), // Using admin_id=1 as default for settings
-        headers: {'Content-Type': 'application/json'},
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final settings = data['settings'] as Map<String, dynamic>? ?? {};
-        setState(() {
-          _formSettings = {
-            'scrf_enabled': settings['scrf_enabled'] ?? true,
-            'routine_interview_enabled': settings['routine_interview_enabled'] ?? true,
-            'good_moral_request_enabled': settings['good_moral_request_enabled'] ?? true,
-            'guidance_scheduling_enabled': settings['guidance_scheduling_enabled'] ?? true,
-            'dass21_enabled': settings['dass21_enabled'] ?? false,
-          };
-          _isLoadingFormSettings = false;
-        });
-      } else {
-        // Keep default settings if fetch fails
-        setState(() {
-          _isLoadingFormSettings = false;
-        });
-      }
-    } catch (e) {
-      // Keep default settings if error occurs
-      setState(() {
-        _isLoadingFormSettings = false;
-      });
-    }
-  }
 
   Future<void> _fetchStudentForms() async {
     if (_currentUser == null) return;
@@ -274,6 +238,10 @@ class _StudentPanelState extends State<StudentPanel> with SingleTickerProviderSt
           ),
           ElevatedButton(
             onPressed: () {
+              // Clear AuthProvider
+              final authProvider = Provider.of<AuthProvider>(context, listen: false);
+              authProvider.logout();
+
               Navigator.of(context).pop();
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(
@@ -402,7 +370,8 @@ class _StudentPanelState extends State<StudentPanel> with SingleTickerProviderSt
   }
 
   void _navigateToGuidanceSchedulingPage() {
-    if (_formSettings['guidance_scheduling_enabled'] == true) {
+    final formSettingsProvider = Provider.of<FormSettingsProvider>(context, listen: false);
+    if (formSettingsProvider.formSettings['guidance_scheduling_enabled'] == true) {
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => GuidanceSchedulingPage(
@@ -437,7 +406,8 @@ class _StudentPanelState extends State<StudentPanel> with SingleTickerProviderSt
   }
 
   void _navigateToGoodMoralRequestPage() {
-    if (_formSettings['good_moral_request_enabled'] == true) {
+    final formSettingsProvider = Provider.of<FormSettingsProvider>(context, listen: false);
+    if (formSettingsProvider.formSettings['good_moral_request_enabled'] == true) {
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (context) => GoodMoralRequest(),
@@ -461,7 +431,8 @@ class _StudentPanelState extends State<StudentPanel> with SingleTickerProviderSt
   }
 
   void _navigateToDASS21Page() {
-    if (_formSettings['dass21_enabled'] != true) {
+    final formSettingsProvider = Provider.of<FormSettingsProvider>(context, listen: false);
+    if (formSettingsProvider.formSettings['dass21_enabled'] != true) {
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
@@ -540,6 +511,8 @@ class _StudentPanelState extends State<StudentPanel> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    final formSettingsProvider = Provider.of<FormSettingsProvider>(context);
+    final formSettings = formSettingsProvider.formSettings;
     return Scaffold(
       body: Column(
         children: [
@@ -939,103 +912,105 @@ class _StudentPanelState extends State<StudentPanel> with SingleTickerProviderSt
                                                   ),
                                                 ),
                                                 // Good Moral Request Card
-                                                Padding(
-                                                  padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.01), // 0.5-inch padding between cards
-                                                  child: Container(
-                                                    decoration: BoxDecoration(
-                                                      gradient: LinearGradient(
-                                                        colors: [Colors.orange.shade50, Colors.orange.shade100],
-                                                        begin: Alignment.topLeft,
-                                                        end: Alignment.bottomRight,
-                                                      ),
-                                                      borderRadius: BorderRadius.circular(16),
-                                                      boxShadow: [
-                                                        BoxShadow(
-                                                          color: Colors.orange.shade200.withOpacity(0.3),
-                                                          blurRadius: 8,
-                                                          offset: const Offset(0, 4),
+                                                if (formSettings['good_moral_request_enabled'] == true)
+                                                  Padding(
+                                                    padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.01), // 0.5-inch padding between cards
+                                                    child: Container(
+                                                      decoration: BoxDecoration(
+                                                        gradient: LinearGradient(
+                                                          colors: [Colors.orange.shade50, Colors.orange.shade100],
+                                                          begin: Alignment.topLeft,
+                                                          end: Alignment.bottomRight,
                                                         ),
-                                                      ],
-                                                    ),
-                                                    child: Card(
-                                                      margin: EdgeInsets.zero,
-                                                      elevation: 0,
-                                                      color: Colors.transparent,
-                                                      shape: RoundedRectangleBorder(
                                                         borderRadius: BorderRadius.circular(16),
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            color: Colors.orange.shade200.withOpacity(0.3),
+                                                            blurRadius: 8,
+                                                            offset: const Offset(0, 4),
+                                                          ),
+                                                        ],
                                                       ),
-                                                      child: InkWell(
-                                                        borderRadius: BorderRadius.circular(16),
-                                                        onTap: _navigateToGoodMoralRequestPage,
-                                                        child: Container(
-                                                          width: double.infinity,
-                                                          padding: const EdgeInsets.all(24),
-                                                          child: Column(
-                                                            mainAxisAlignment: MainAxisAlignment.center,
-                                                            children: [
-                                                              Icon(Icons.description, size: 64, color: Colors.orange.shade700),
-                                                              const SizedBox(height: 20),
-                                                              Text(
-                                                                'Request Good Moral',
-                                                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.orange.shade900),
-                                                                textAlign: TextAlign.center,
-                                                              ),
-                                                            ],
+                                                      child: Card(
+                                                        margin: EdgeInsets.zero,
+                                                        elevation: 0,
+                                                        color: Colors.transparent,
+                                                        shape: RoundedRectangleBorder(
+                                                          borderRadius: BorderRadius.circular(16),
+                                                        ),
+                                                        child: InkWell(
+                                                          borderRadius: BorderRadius.circular(16),
+                                                          onTap: _navigateToGoodMoralRequestPage,
+                                                          child: Container(
+                                                            width: double.infinity,
+                                                            padding: const EdgeInsets.all(24),
+                                                            child: Column(
+                                                              mainAxisAlignment: MainAxisAlignment.center,
+                                                              children: [
+                                                                Icon(Icons.description, size: 64, color: Colors.orange.shade700),
+                                                                const SizedBox(height: 20),
+                                                                Text(
+                                                                  'Request Good Moral',
+                                                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.orange.shade900),
+                                                                  textAlign: TextAlign.center,
+                                                                ),
+                                                              ],
+                                                            ),
                                                           ),
                                                         ),
                                                       ),
                                                     ),
                                                   ),
-                                                ),
                                                 // DASS-21 Card
-                                                Padding(
-                                                  padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.01), // 0.5-inch padding between cards
-                                                  child: Container(
-                                                    decoration: BoxDecoration(
-                                                      gradient: LinearGradient(
-                                                        colors: [Colors.purple.shade50, Colors.purple.shade100],
-                                                        begin: Alignment.topLeft,
-                                                        end: Alignment.bottomRight,
-                                                      ),
-                                                      borderRadius: BorderRadius.circular(16),
-                                                      boxShadow: [
-                                                        BoxShadow(
-                                                          color: Colors.purple.shade200.withOpacity(0.3),
-                                                          blurRadius: 8,
-                                                          offset: const Offset(0, 4),
+                                                if (formSettings['dass21_enabled'] == true)
+                                                  Padding(
+                                                    padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.01), // 0.5-inch padding between cards
+                                                    child: Container(
+                                                      decoration: BoxDecoration(
+                                                        gradient: LinearGradient(
+                                                          colors: [Colors.purple.shade50, Colors.purple.shade100],
+                                                          begin: Alignment.topLeft,
+                                                          end: Alignment.bottomRight,
                                                         ),
-                                                      ],
-                                                    ),
-                                                    child: Card(
-                                                      margin: EdgeInsets.zero,
-                                                      elevation: 0,
-                                                      color: Colors.transparent,
-                                                      shape: RoundedRectangleBorder(
                                                         borderRadius: BorderRadius.circular(16),
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            color: Colors.purple.shade200.withOpacity(0.3),
+                                                            blurRadius: 8,
+                                                            offset: const Offset(0, 4),
+                                                          ),
+                                                        ],
                                                       ),
-                                                      child: InkWell(
-                                                        borderRadius: BorderRadius.circular(16),
-                                                        onTap: _navigateToDASS21Page,
-                                                        child: Container(
-                                                          width: double.infinity,
-                                                          padding: const EdgeInsets.all(24),
-                                                          child: Column(
-                                                            mainAxisAlignment: MainAxisAlignment.center,
-                                                            children: [
-                                                              Icon(Icons.psychology, size: 64, color: Colors.purple.shade700),
-                                                              const SizedBox(height: 20),
-                                                              Text(
-                                                                'Psychological Examination',
-                                                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.purple.shade900),
-                                                                textAlign: TextAlign.center,
-                                                              ),
-                                                            ],
+                                                      child: Card(
+                                                        margin: EdgeInsets.zero,
+                                                        elevation: 0,
+                                                        color: Colors.transparent,
+                                                        shape: RoundedRectangleBorder(
+                                                          borderRadius: BorderRadius.circular(16),
+                                                        ),
+                                                        child: InkWell(
+                                                          borderRadius: BorderRadius.circular(16),
+                                                          onTap: _navigateToDASS21Page,
+                                                          child: Container(
+                                                            width: double.infinity,
+                                                            padding: const EdgeInsets.all(24),
+                                                            child: Column(
+                                                              mainAxisAlignment: MainAxisAlignment.center,
+                                                              children: [
+                                                                Icon(Icons.psychology, size: 64, color: Colors.purple.shade700),
+                                                                const SizedBox(height: 20),
+                                                                Text(
+                                                                  'Psychological Examination',
+                                                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.purple.shade900),
+                                                                  textAlign: TextAlign.center,
+                                                                ),
+                                                              ],
+                                                            ),
                                                           ),
                                                         ),
                                                       ),
                                                     ),
                                                   ),
-                                                ),
                                               ],
                                             ),
                                           ),

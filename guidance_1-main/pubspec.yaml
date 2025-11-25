@@ -10,8 +10,6 @@ dependencies:
   flutter:
     sdk: flutter
   table_calendar: ^3.0.9
-  google_mlkit_text_recognition: ^0.15.0 # For OCR on mobile
-  flutter_tesseract_ocr: ^0.4.0 # For OCR on desktop
   image_picker: ^1.1.2
   path_provider: ^2.1.5
   open_file: ^3.2.1
@@ -23,20 +21,30 @@ dependencies:
   shelf_router: ^1.1.4
   args: ^2.4.0
   http: ^1.1.0
+  provider: ^6.0.5
   flutter_typeahead: ^5.0.2
   fl_chart: ^0.66.1
-  syncfusion_flutter_pdf: ^31.1.19
+  syncfusion_flutter_pdf: ^27.1.48
   permission_handler: ^12.0.1
   pdf: ^3.11.3
-  path: ^1.9.1
+  path: ^1.8.0
   bcrypt: ^1.1.3
   window_manager: ^0.3.9
-  file_picker: ^6.0.0
+  file_picker: ^8.0.0
+  image: ^4.0.17
+  docx_template: ^0.4.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
+  test: ^1.24.0
+
+flutter_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/icons/s_logo.jpg"
 
 flutter:
   uses-material-design: true
@@ -47,5 +55,4 @@ flutter:
     - assets/images/logonbg.png
     - assets/files/RequestSlip.pdf
     - assets/files/RequestSlip.docx
-    - assets/files/Good Moral.pdf
-    - assets/tesseract_config.txt
+    - assets/files/GoodMoral.pdf

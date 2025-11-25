@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:provider/provider.dart';
 import 'student/guidance_scheduling_page.dart';
 import 'student/answerable_forms.dart';
 import 'student/good_moral_request.dart';
@@ -17,6 +18,7 @@ import 'admin/admin_exit_interviews_page.dart';
 import 'admin/admin_forms_page.dart';
 import 'head/head_dashboard.dart';
 import 'head/head_good_moral_page.dart';
+import 'providers/auth_provider.dart';
 
 
 class NavigationRailExample extends StatefulWidget {
@@ -41,8 +43,12 @@ class _NavigationRailExampleState extends State<NavigationRailExample> with Sing
   @override
   void initState() {
     super.initState();
-    _currentUser  = widget.userData;
-    _fetchApprovedAppointments();
+    // Get user data from AuthProvider if not passed directly
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      _currentUser = authProvider.userData ?? widget.userData;
+      _fetchApprovedAppointments();
+    });
   }
 
   Future<void> _fetchApprovedAppointments() async {

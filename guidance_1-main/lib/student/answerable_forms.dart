@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:provider/provider.dart';
 import 'routine_interview_page.dart';
-import 'scrf_page.dart';
-import 'exit_interview_page.dart';
+import 'scrf_page.dart';import 'exit_interview_page.dart';
 import 'exit_survey_graduating_page.dart';
 import '../config.dart';
+import '../providers/form_settings_provider.dart';
 
 class AnswerableForms extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -17,71 +18,12 @@ class AnswerableForms extends StatefulWidget {
 
 class _AnswerableFormsState extends State<AnswerableForms> {
   List<Map<String, dynamic>> _studentForms = [];
-  Map<String, bool> _formSettings = {
-    'scrf_enabled': true,
-    'routine_interview_enabled': true,
-  };
-  bool _isLoadingFormSettings = false;
   bool _isLoadingForms = false;
-
-
 
   @override
   void initState() {
     super.initState();
-    _fetchFormSettings();
     _fetchStudentForms();
-  }
-
-  Future<void> _fetchFormSettings() async {
-    setState(() {
-      _isLoadingFormSettings = true;
-    });
-
-    try {
-      final userId = widget.userData?['id'] ?? 0;
-      final apiUrl = await AppConfig.apiBaseUrl;
-      final response = await http.get(
-        Uri.parse('$apiUrl/api/admin/users/$userId/form-settings?admin_id=1'),
-        headers: {'Content-Type': 'application/json'},
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final settings = data['settings'] as Map<String, dynamic>;
-        setState(() {
-          _formSettings = {
-            'scrf_enabled': settings['scrf_enabled'] ?? true,
-            'routine_interview_enabled': settings['routine_interview_enabled'] ?? true,
-            'good_moral_request_enabled': settings['good_moral_request_enabled'] ?? true,
-            'guidance_scheduling_enabled': settings['guidance_scheduling_enabled'] ?? true,
-          };
-          _isLoadingFormSettings = false;
-        });
-      } else {
-        // If API fails, default to enabled
-        setState(() {
-          _formSettings = {
-            'scrf_enabled': true,
-            'routine_interview_enabled': true,
-            'good_moral_request_enabled': true,
-            'guidance_scheduling_enabled': true,
-          };
-          _isLoadingFormSettings = false;
-        });
-      }
-    } catch (e) {
-      // If error occurs, default to enabled
-      setState(() {
-        _formSettings = {
-          'scrf_enabled': true,
-          'routine_interview_enabled': true,
-          'good_moral_request_enabled': true,
-          'guidance_scheduling_enabled': true,
-        };
-        _isLoadingFormSettings = false;
-      });
-    }
   }
 
   Future<void> _fetchStudentForms() async {
@@ -130,6 +72,8 @@ class _AnswerableFormsState extends State<AnswerableForms> {
 
   @override
   Widget build(BuildContext context) {
+    final formSettingsProvider = Provider.of<FormSettingsProvider>(context);
+    final formSettings = formSettingsProvider.formSettings;
     final textStyle = Theme.of(context).textTheme.titleLarge;
     return Scaffold(
       appBar: AppBar(
@@ -229,52 +173,53 @@ class _AnswerableFormsState extends State<AnswerableForms> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    if (formSettings['routine_interview_enabled'] == true) const SizedBox(height: 24),
                     // Routine Interview Form
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.green.shade50, Colors.green.shade100, Colors.green.shade200],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.green.shade400, width: 2),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.green.shade300.withOpacity(0.4),
-                            blurRadius: 12,
-                            offset: const Offset(0, 6),
+                    if (formSettings['routine_interview_enabled'] == true)
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.green.shade50, Colors.green.shade100, Colors.green.shade200],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                        ],
-                      ),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(20),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const RoutineInterviewPage()),
-                          );
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(24.0),
-                          child: Row(
-                            children: [
-                              Icon(Icons.forum, size: 56, color: Colors.green.shade800),
-                              const SizedBox(width: 24),
-                              Expanded(
-                                child: Text(
-                                  'Routine Interview',
-                                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green.shade900),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.green.shade400, width: 2),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.green.shade300.withOpacity(0.4),
+                              blurRadius: 12,
+                              offset: const Offset(0, 6),
+                            ),
+                          ],
+                        ),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const RoutineInterviewPage()),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(24.0),
+                            child: Row(
+                              children: [
+                                Icon(Icons.forum, size: 56, color: Colors.green.shade800),
+                                const SizedBox(width: 24),
+                                Expanded(
+                                  child: Text(
+                                    'Routine Interview',
+                                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green.shade900),
+                                  ),
                                 ),
-                              ),
-                              Icon(Icons.arrow_forward_ios, color: Colors.green.shade600),
-                            ],
+                                Icon(Icons.arrow_forward_ios, color: Colors.green.shade600),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 24),
+                    if (formSettings['routine_interview_enabled'] == true) const SizedBox(height: 24),
                     // Exit interview for transferring students
                     Container(
                       decoration: BoxDecoration(

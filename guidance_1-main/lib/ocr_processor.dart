@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'config.dart';
 
 class OCRSpaceUploader extends StatefulWidget {
   @override
@@ -24,7 +25,7 @@ class _OCRSpaceUploaderState extends State<OCRSpaceUploader> {
   }
 
   Future<void> sendToOCRSpace(File imageFile) async {
-    const apiKey = "helloworld"; // Replace with your real API key
+    const apiKey = "K83005968488957";
     const url = "https://api.ocr.space/parse/image";
 
     var request = http.MultipartRequest('POST', Uri.parse(url));
